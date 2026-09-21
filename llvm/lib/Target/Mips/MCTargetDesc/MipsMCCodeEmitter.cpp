@@ -1131,4 +1131,15 @@ MipsMCCodeEmitter::getSimm23Lsl2Encoding(const MCInst &MI, unsigned OpNo,
   return Res >> 2;
 }
 
+unsigned
+MipsMCCodeEmitter::getVU0MicroAddrEncoding(const MCInst &MI, unsigned OpNo,
+                                           SmallVectorImpl<MCFixup> &Fixups,
+                                           const MCSubtargetInfo &STI) const {
+  const MCOperand &MO = MI.getOperand(OpNo);
+  assert(MO.isImm() && "getVU0MicroAddrEncoding expects only an immediate");
+  unsigned Res = static_cast<unsigned>(MO.getImm());
+  assert((Res & 7) == 0);
+  return Res >> 3;
+}
+
 #include "MipsGenMCCodeEmitter.inc"

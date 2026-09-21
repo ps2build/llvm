@@ -189,10 +189,15 @@ def FeatureCnMipsP : SubtargetFeature<"cnmipsp", "HasCnMipsP",
 def FeatureFixR5900 : SubtargetFeature<"fix-r5900", "FixR5900", "true",
                                        "Enable R5900 short loop erratum fix">;
 
+def FeatureVU0 : SubtargetFeature<"vu0", "HasVU0", "true",
+                                  "R5900 VU0 macro-mode (VUX) instructions "
+                                  "and registers - asm/inline-asm only, not "
+                                  "reachable from C codegen">;
+
 def FeatureR5900 : SubtargetFeature<"r5900", "IsR5900", "true",
                                     "R5900 (PS2 Emotion Engine) Support",
                                     [FeatureMips3, FeatureSingleFloat,
-                                     FeatureFixR5900]>;
+                                     FeatureFixR5900, FeatureVU0]>;
 
 def FeatureUseTCCInDIV : SubtargetFeature<
                                "use-tcc-in-div",
@@ -234,6 +239,8 @@ def IsPTR32bit    :   Predicate<"!Subtarget->isABI_N64()">,
                       AssemblerPredicate<(all_of (not FeaturePTR64Bit))>;
 def UseCompactBranches : Predicate<"Subtarget->useCompactBranches()">,
                          AssemblerPredicate<(all_of FeatureUseCompactBranches)>;
+def HasVU0 : Predicate<"Subtarget->hasVU0()">,
+            AssemblerPredicate<(all_of FeatureVU0)>;
 
 //===----------------------------------------------------------------------===//
 // HwModes
@@ -248,6 +255,7 @@ def MIPS64 : HwMode<[IsPTR64bit]>;
 
 include "MipsRegisterInfo.td"
 include "MipsInstrInfo.td"
+include "MipsVU0InstrInfo.td"
 include "MipsCallingConv.td"
 include "MipsRegisterBanks.td"
 include "MipsCombine.td"

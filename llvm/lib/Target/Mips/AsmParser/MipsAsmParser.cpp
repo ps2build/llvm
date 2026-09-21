@@ -429,6 +429,10 @@ class MipsAsmParser : public MCTargetAsmParser {
 
   int matchMSA128CtrlRegisterName(StringRef Name);
 
+  int matchVU0VFRegisterName(StringRef Name);
+
+  int matchVU0VIRegisterName(StringRef Name);
+
   MCRegister getReg(int RC, int RegNo);
 
   /// Returns the internal register number for the current AT. Also checks if
@@ -774,6 +778,13 @@ public:
     RegKind_HWRegs = 256, /// HWRegs
     RegKind_COP3 = 512,   /// COP3
     RegKind_COP0 = 1024,  /// COP0
+    /// R5900 VU0 macro-mode 128-bit vector registers ($vf0-$vf31). Not part
+    /// of RegKind_Numeric: unlike GPR/FGR/etc, these are only ever named
+    /// ("$vf5"), never reachable via bare numeric "$5" syntax.
+    RegKind_VU0VF = 2048,
+    /// R5900 VU0 macro-mode 16-bit integer registers ($vi0-$vi15). Also
+    /// named-only, not in RegKind_Numeric.
+    RegKind_VU0VI = 4096,
     /// Potentially any (e.g. $1)
     RegKind_Numeric = RegKind_GPR | RegKind_FGR | RegKind_FCC | RegKind_MSA128 |
                       RegKind_MSACtrl | RegKind_COP2 | RegKind_ACC |
@@ -931,6 +942,20 @@ private:
     // It doesn't matter which of the MSA128[BHWD] classes we use. They are all
     // identical
     unsigned ClassID = Mips::MSA128BRegClassID;
+    return RegIdx.RegInfo->getRegClass(ClassID).getRegister(RegIdx.Index);
+  }
+
+  /// Coerce the register to VU0VF and return the real register for the
+  /// current target.
+  MCRegister getVU0VFReg() const {
+    assert(isRegIdx() && (RegIdx.Kind & RegKind_VU0VF) && "Invalid access!");
+    unsigned ClassID = Mips::VU0VFRegClassID;
+    return RegIdx.RegInfo->getRegClass(ClassID).getRegister(RegIdx.Index);
+  }
+
+  MCRegister getVU0VIReg() const {
+    assert(isRegIdx() && (RegIdx.Kind & RegKind_VU0VI) && "Invalid access!");
+    unsigned ClassID = Mips::VU0VIRegClassID;
     return RegIdx.RegInfo->getRegClass(ClassID).getRegister(RegIdx.Index);
   }
 
@@ -1121,6 +1146,16 @@ public:
   void addMSA128AsmRegOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     Inst.addOperand(MCOperand::createReg(getMSA128Reg()));
+  }
+
+  void addVU0VFAsmRegOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    Inst.addOperand(MCOperand::createReg(getVU0VFReg()));
+  }
+
+  void addVU0VIAsmRegOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    Inst.addOperand(MCOperand::createReg(getVU0VIReg()));
   }
 
   void addMSACtrlAsmRegOperands(MCInst &Inst, unsigned N) const {
@@ -1537,6 +1572,22 @@ public:
     return CreateReg(Index, Str, RegKind_MSACtrl, RegInfo, S, E, Parser);
   }
 
+  /// Create a register that is definitely a VU0VF.
+  /// This is typically only used for named registers such as $vf0.
+  static std::unique_ptr<MipsOperand>
+  createVU0VFReg(unsigned Index, StringRef Str, const MCRegisterInfo *RegInfo,
+                 SMLoc S, SMLoc E, MipsAsmParser &Parser) {
+    return CreateReg(Index, Str, RegKind_VU0VF, RegInfo, S, E, Parser);
+  }
+
+  /// Create a register that is definitely a VU0VI.
+  /// This is typically only used for named registers such as $vi0.
+  static std::unique_ptr<MipsOperand>
+  createVU0VIReg(unsigned Index, StringRef Str, const MCRegisterInfo *RegInfo,
+                 SMLoc S, SMLoc E, MipsAsmParser &Parser) {
+    return CreateReg(Index, Str, RegKind_VU0VI, RegInfo, S, E, Parser);
+  }
+
   static std::unique_ptr<MipsOperand>
   CreateImm(const MCExpr *Val, SMLoc S, SMLoc E, MipsAsmParser &Parser) {
     auto Op = std::make_unique<MipsOperand>(k_Immediate, Parser);
@@ -1664,6 +1715,14 @@ public:
 
   bool isMSACtrlAsmReg() const {
     return isRegIdx() && RegIdx.Kind & RegKind_MSACtrl && RegIdx.Index <= 7;
+  }
+
+  bool isVU0VFAsmReg() const {
+    return isRegIdx() && RegIdx.Kind & RegKind_VU0VF && RegIdx.Index <= 31;
+  }
+
+  bool isVU0VIAsmReg() const {
+    return isRegIdx() && RegIdx.Kind & RegKind_VU0VI && RegIdx.Index <= 15;
   }
 
   /// getStartLoc - Get the location of the first token of this operand.
@@ -6311,6 +6370,32 @@ int MipsAsmParser::matchMSA128CtrlRegisterName(StringRef Name) {
   return CC;
 }
 
+int MipsAsmParser::matchVU0VFRegisterName(StringRef Name) {
+  unsigned IntVal;
+
+  if (Name.front() != 'v' || Name.size() < 3 || Name[1] != 'f' ||
+      Name.drop_front(2).getAsInteger(10, IntVal))
+    return -1;
+
+  if (IntVal > 31)
+    return -1;
+
+  return IntVal;
+}
+
+int MipsAsmParser::matchVU0VIRegisterName(StringRef Name) {
+  unsigned IntVal;
+
+  if (Name.front() != 'v' || Name.size() < 3 || Name[1] != 'i' ||
+      Name.drop_front(2).getAsInteger(10, IntVal))
+    return -1;
+
+  if (IntVal > 15)
+    return -1;
+
+  return IntVal;
+}
+
 bool MipsAsmParser::canUseATReg() {
   return AssemblerOptions.back()->getATRegIndex() != 0;
 }
@@ -6710,6 +6795,22 @@ ParseStatus MipsAsmParser::matchAnyRegisterNameWithoutDollar(
   Index = matchMSA128CtrlRegisterName(Identifier);
   if (Index != -1) {
     Operands.push_back(MipsOperand::createMSACtrlReg(
+        Index, Identifier, getContext().getRegisterInfo(), S,
+        getLexer().getLoc(), *this));
+    return ParseStatus::Success;
+  }
+
+  Index = matchVU0VFRegisterName(Identifier);
+  if (Index != -1) {
+    Operands.push_back(MipsOperand::createVU0VFReg(
+        Index, Identifier, getContext().getRegisterInfo(), S,
+        getLexer().getLoc(), *this));
+    return ParseStatus::Success;
+  }
+
+  Index = matchVU0VIRegisterName(Identifier);
+  if (Index != -1) {
+    Operands.push_back(MipsOperand::createVU0VIReg(
         Index, Identifier, getContext().getRegisterInfo(), S,
         getLexer().getLoc(), *this));
     return ParseStatus::Success;

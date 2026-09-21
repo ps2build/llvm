@@ -133,6 +133,9 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // FixR5900 - Enable R5900 short loop erratum fix.
   bool FixR5900;
 
+  // HasVU0 - R5900 VU0 macro-mode (VUX) instructions/registers available.
+  bool HasVU0;
+
   // isLinux - Target system is Linux. Is false we consider ELFOS for now.
   bool IsLinux;
 
@@ -311,6 +314,7 @@ public:
   bool hasCnMipsP() const { return HasCnMipsP; }
   bool isR5900() const { return IsR5900; }
   bool fixR5900() const { return FixR5900; }
+  bool hasVU0() const { return HasVU0; }
 
   bool isLittle() const { return IsLittle; }
   bool isABICalls() const { return !NoABICalls; }

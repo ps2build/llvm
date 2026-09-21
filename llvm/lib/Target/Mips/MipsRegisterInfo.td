@@ -214,6 +214,22 @@ let Namespace = "Mips" in {
   foreach I = 0-31 in
   def COP3#I : MipsReg<I, ""#I>;
 
+  // R5900 VU0 macro-mode (VUX) registers. Tracked as a distinct 128-bit
+  // register class - not wired into any calling convention, legalizer
+  // rule, or value-type mapping, so ordinary codegen can never select
+  // them; usable only via inline/standalone asm referencing them by name.
+  foreach I = 0-31 in
+  def VF#I : MipsReg<I, "vf"#I>;
+
+  foreach I = 0-15 in
+  def VI#I : MipsReg<I, "vi"#I>;
+
+  def ACC : MipsReg<0, "ACC">;
+  def VU0Q : MipsReg<0, "Q">;
+  def VU0P : MipsReg<0, "P">;
+  def VU0R : MipsReg<0, "R">;
+  def VU0I : MipsReg<0, "I">;
+
   // PC register
   def PC : Register<"pc">;
 
@@ -486,6 +502,16 @@ def COP2 : RegisterClass<"Mips", [i32], 32, (sequence "COP2%u", 0, 31)>,
 def COP3 : RegisterClass<"Mips", [i32], 32, (sequence "COP3%u", 0, 31)>,
            Unallocatable;
 
+// R5900 VU0 macro-mode (VUX) registers - see the VF/VI/ACC/Q/P/R/I Register
+// defs above. Unallocatable and untyped: nameable/encodable for asm, not
+// reachable by the register allocator or any legalizer rule.
+def VU0VF : RegisterClass<"Mips", [untyped], 128, (sequence "VF%u", 0, 31)>,
+            Unallocatable;
+def VU0VI : RegisterClass<"Mips", [untyped], 16, (sequence "VI%u", 0, 15)>,
+            Unallocatable;
+def VU0ACC : RegisterClass<"Mips", [untyped], 128, (add ACC)>,
+             Unallocatable;
+
 // Stack pointer and global pointer classes for instructions that are limited
 // to a single register such as lwgp/lwsp in microMIPS.
 def SP32 : RegisterClass<"Mips", [i32], 32, (add SP)>, Unallocatable;
@@ -609,6 +635,14 @@ def MSA128AsmOperand : MipsAsmRegOperand {
 
 def MSACtrlAsmOperand : MipsAsmRegOperand {
   let Name = "MSACtrlAsmReg";
+}
+
+def VU0VFAsmOperand : MipsAsmRegOperand {
+  let Name = "VU0VFAsmReg";
+}
+
+def VU0VIAsmOperand : MipsAsmRegOperand {
+  let Name = "VU0VIAsmReg";
 }
 
 def GPR32ZeroOpnd : RegisterOperand<GPR32ZERO> {
@@ -738,6 +772,14 @@ def COP2Opnd : RegisterOperand<COP2> {
 
 def COP3Opnd : RegisterOperand<COP3> {
   let ParserMatchClass = COP3AsmOperand;
+}
+
+def VU0VFOpnd : RegisterOperand<VU0VF> {
+  let ParserMatchClass = VU0VFAsmOperand;
+}
+
+def VU0VIOpnd : RegisterOperand<VU0VI> {
+  let ParserMatchClass = VU0VIAsmOperand;
 }
 
 def MSA128BOpnd : RegisterOperand<MSA128B> {

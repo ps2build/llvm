@@ -194,10 +194,28 @@ def FeatureVU0 : SubtargetFeature<"vu0", "HasVU0", "true",
                                   "and registers - asm/inline-asm only, not "
                                   "reachable from C codegen">;
 
+// Additive, not tied to -mcpu=: enables cache/pref mnemonic acceptance
+// (see HasPS2CachePred below) without changing the IOP's own mips1
+// codegen baseline the way pulling in real FeatureMips3_32 would (that
+// feature implies real MIPS III/32 instruction *selection* choices, not
+// just mnemonic availability - this target's own C-codegen output should
+// stay exactly as conservative as plain mips1). Real PS2 IOP silicon
+// (R3000A-based) is documented MIPS I but is used with cache/pref freely
+// in existing sdk-core/newlib asm (e.g. sysclib's memset.S/memcpy.S) and
+// real GNU as accepts them there without complaint - PREF is defined by
+// the MIPS spec as advisory/non-trapping, so this isn't asserting real
+// hardware implements prefetching, only that executing the opcode is
+// safe on this target, matching what already-working real-world code
+// assumes.
+def FeaturePS2Cache : SubtargetFeature<"ps2cache", "HasPS2Cache", "true",
+                                       "Accept cache/pref, without pulling "
+                                       "in the rest of FeatureMips3_32">;
+
 def FeatureR5900 : SubtargetFeature<"r5900", "IsR5900", "true",
                                     "R5900 (PS2 Emotion Engine) Support",
                                     [FeatureMips3, FeatureSingleFloat,
-                                     FeatureFixR5900, FeatureVU0]>;
+                                     FeatureFixR5900, FeatureVU0,
+                                     FeaturePS2Cache]>;
 
 def FeatureUseTCCInDIV : SubtargetFeature<
                                "use-tcc-in-div",
@@ -244,6 +262,9 @@ def HasVU0 : Predicate<"Subtarget->hasVU0()">,
 
 def IsR5900Pred : Predicate<"Subtarget->isR5900()">,
                   AssemblerPredicate<(all_of FeatureR5900)>;
+
+def HasPS2CachePred : Predicate<"Subtarget->hasPS2Cache()">,
+                      AssemblerPredicate<(all_of FeaturePS2Cache)>;
 
 //===----------------------------------------------------------------------===//
 // HwModes
@@ -301,6 +322,13 @@ class Proc<string Name, list<SubtargetFeature> Features>
 
 def : Proc<"generic", [FeatureMips32]>;
 def : Proc<"mips1", [FeatureMips1]>;
+// R3000A: the PS2 IOP's real CPU (also the original PlayStation's CPU) -
+// documented MIPS I, plus FeaturePS2Cache since real cache/pref usage in
+// existing sdk-core/newlib IOP asm needs to assemble (see FeaturePS2Cache
+// in this file for why that's not the same as pulling in real MIPS III/32
+// codegen support). Named for the real chip, not a generic ISA bucket -
+// same reasoning as r5900 below.
+def : Proc<"r3000a", [FeatureMips1, FeaturePS2Cache]>;
 def : Proc<"mips2", [FeatureMips2]>;
 def : Proc<"mips32", [FeatureMips32]>;
 def : Proc<"mips32r2", [FeatureMips32r2]>;

@@ -2294,3 +2294,24 @@ def P_MOVZ : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
   let Inst{5-0} = 0x0a;
 }
 }
+
+//===----------------------------------------------------------------------===//
+// cache/pref - found missing on the IOP side while porting sdk-core's
+// sysclib (newlib's hand-optimized mips/memset.S etc use pref for
+// prefetch hints). Upstream's own CACHE/PREF (MipsInstrInfo.td) exist but
+// are gated behind INSN_MIPS3_32_NOT_32R6_64R6, which pulls in real
+// FeatureMips3_32 - a genuine MIPS III/32 instruction-selection feature,
+// not just "these two mnemonics are legal here". Reusing the real
+// encoding (CacheOp/CACHEOP_FM, both already upstream) under our own
+// FeaturePS2Cache instead keeps the IOP's mips1 codegen baseline
+// untouched - this predicate only ever affects whether cache/pref parse,
+// nothing about what the compiler itself chooses to emit. FeatureR5900
+// implies it too, closing the EE-side gap the README flagged as
+// unresolved ("cache fails... despite the predicate chain looking
+// satisfied on paper" - HasStdEnc, not FeatureMips3_32, was blocking
+// upstream's own CACHE/PREF; irrelevant to these, which don't use it).
+let Predicates = [HasPS2CachePred], hasNoSchedulingInfo = 1,
+    DecoderNamespace = "VU0" in {
+def P2_CACHE : CacheOp<"cache", mem>, CACHEOP_FM<0b101111>;
+def P2_PREF  : CacheOp<"pref", mem>, CACHEOP_FM<0b110011>;
+}

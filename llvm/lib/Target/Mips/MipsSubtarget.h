@@ -136,6 +136,9 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // HasVU0 - R5900 VU0 macro-mode (VUX) instructions/registers available.
   bool HasVU0;
 
+  // HasPS2Cache - accept cache/pref (see FeaturePS2Cache in Mips.td).
+  bool HasPS2Cache;
+
   // isLinux - Target system is Linux. Is false we consider ELFOS for now.
   bool IsLinux;
 
@@ -313,6 +316,7 @@ public:
   bool hasCnMips() const { return HasCnMips; }
   bool hasCnMipsP() const { return HasCnMipsP; }
   bool isR5900() const { return IsR5900; }
+  bool hasPS2Cache() const { return HasPS2Cache; }
   bool fixR5900() const { return FixR5900; }
   bool hasVU0() const { return HasVU0; }
 

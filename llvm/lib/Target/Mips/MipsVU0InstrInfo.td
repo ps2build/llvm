@@ -1066,3 +1066,1231 @@ def SYNC_P : InstSE<(outs), (ins), "sync.p", [], FrmOther>, StdArch {
   let Inst = 0x0000040f;
 }
 }
+
+//===----------------------------------------------------------------------===//
+// R5900 MMI (MIPS Multimedia Instructions) - the paired/packed 128-bit SIMD
+// group tagged "MMI" in opcodes/mips-opc.c, plus the pipeline-1 HI/LO
+// instructions (mult1/div1/madd1/mfhi1/.../mtlo1, tagged plain "EE") and the
+// SA-register instructions (mfsa/mtsa/mtsab/mtsah, also "EE"). Found missing
+// entirely from upstream's R5900 patch - real sdk-core code (kernel.S's
+// hand-optimized memcpy/memset/strlen/strncpy) uses this group directly and
+// wouldn't assemble at all before this. A much bigger gap than lq/sq/di/ei/
+// sync.p (added earlier): ~100 opcodes vs. 3.
+//
+// Every def below is mechanically derived from the real GNU binutils EE
+// build's own opcode table (toolchain/build/ee/binutils-gdb/opcodes/
+// mips-opc.c) - name/args/match/mask transcribed verbatim, then the mask
+// used to determine which standard R-type fields (rs[25:21], rt[20:16],
+// rd[15:11], shamt[10:6]) are real operands vs. fixed constants, rather than
+// hand-deriving ~100 encodings by reading the EE manual. Same GPR64Opnd
+// register-operand choice as the existing lq/sq above (EE GPRs are 128 bits
+// natively; MMI ops read/write the same register file, not a separate
+// vector register class). Skips two purely-syntactic GNU-asm forms
+// (div1/divu1's "z,s,t" mnemonic requires a literal "$0" placeholder in the
+// first operand slot that doesn't correspond to any real bit - here they're
+// defined as the plain 2-operand "div1 $rs, $rt" instead, same encoding,
+// without replicating that print quirk) and picks the 2-operand
+// s,t-only encoding for mult1/multu1/madd1/maddu1 (writes only HI1/LO1, not
+// also a GPR - the simpler, more commonly used form; mips-opc.c also has a
+// 3-operand d,s,t variant that additionally writes a GPR, not implemented
+// here). DecoderNamespace="VU0" for the same reason as lq/sq: SPECIAL/
+// SPECIAL2/REGIMM are heavily used by generic MIPS instructions this
+// subtarget doesn't enable, but sharing the same decode table namespace
+// risks a TableGen decode-table conflict without it.
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, DecoderNamespace = "VU0" in {
+// Auto-generated from real GNU binutils opcodes/mips-opc.c (toolchain/build/ee/binutils-gdb).
+// 102 instructions.
+
+def P_PABSH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt),
+                 "pabsh\t$rd, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x5;
+  let Inst{5-0} = 0x28;
+}
+def P_PABSW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt),
+                 "pabsw\t$rd, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1;
+  let Inst{5-0} = 0x28;
+}
+def P_PADDSW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "paddsw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x10;
+  let Inst{5-0} = 0x08;
+}
+def P_PADDUB : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "paddub\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x18;
+  let Inst{5-0} = 0x28;
+}
+def P_PADDUH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "padduh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x14;
+  let Inst{5-0} = 0x28;
+}
+def P_PADDUW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "padduw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x10;
+  let Inst{5-0} = 0x28;
+}
+def P_PADSBH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "padsbh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x4;
+  let Inst{5-0} = 0x28;
+}
+def P_PAND : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pand\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x12;
+  let Inst{5-0} = 0x09;
+}
+def P_PCEQB : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pceqb\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0xa;
+  let Inst{5-0} = 0x28;
+}
+def P_PCEQH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pceqh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x6;
+  let Inst{5-0} = 0x28;
+}
+def P_PCEQW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pceqw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x2;
+  let Inst{5-0} = 0x28;
+}
+def P_PCGTB : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pcgtb\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0xa;
+  let Inst{5-0} = 0x08;
+}
+def P_PCGTH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pcgth\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x6;
+  let Inst{5-0} = 0x08;
+}
+def P_PCGTW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pcgtw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x2;
+  let Inst{5-0} = 0x08;
+}
+def P_PCPYH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt),
+                 "pcpyh\t$rd, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1b;
+  let Inst{5-0} = 0x29;
+}
+def P_PCPYLD : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pcpyld\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0xe;
+  let Inst{5-0} = 0x09;
+}
+def P_PCPYUD : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pcpyud\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0xe;
+  let Inst{5-0} = 0x29;
+}
+def P_PEXCH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt),
+                 "pexch\t$rd, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1a;
+  let Inst{5-0} = 0x29;
+}
+def P_PEXCW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt),
+                 "pexcw\t$rd, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1e;
+  let Inst{5-0} = 0x29;
+}
+def P_PEXEH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt),
+                 "pexeh\t$rd, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1a;
+  let Inst{5-0} = 0x09;
+}
+def P_PEXEW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt),
+                 "pexew\t$rd, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1e;
+  let Inst{5-0} = 0x09;
+}
+def P_PEXT5 : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt),
+                 "pext5\t$rd, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1e;
+  let Inst{5-0} = 0x08;
+}
+def P_PEXTLB : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pextlb\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1a;
+  let Inst{5-0} = 0x08;
+}
+def P_PEXTLH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pextlh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x16;
+  let Inst{5-0} = 0x08;
+}
+def P_PEXTLW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pextlw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x12;
+  let Inst{5-0} = 0x08;
+}
+def P_PEXTUB : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pextub\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1a;
+  let Inst{5-0} = 0x28;
+}
+def P_PEXTUH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pextuh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x16;
+  let Inst{5-0} = 0x28;
+}
+def P_PEXTUW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pextuw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x12;
+  let Inst{5-0} = 0x28;
+}
+def P_PHMADH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "phmadh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x11;
+  let Inst{5-0} = 0x09;
+}
+def P_PHMSBH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "phmsbh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x15;
+  let Inst{5-0} = 0x09;
+}
+def P_PINTEH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pinteh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0xa;
+  let Inst{5-0} = 0x29;
+}
+def P_PINTH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pinth\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0xa;
+  let Inst{5-0} = 0x09;
+}
+def P_PLZCW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs),
+                 "plzcw\t$rd, $rs", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x04;
+}
+def P_PMADDH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pmaddh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x10;
+  let Inst{5-0} = 0x09;
+}
+def P_PMADDUW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pmadduw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x29;
+}
+def P_PMADDW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pmaddw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x09;
+}
+def P_PMAXH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pmaxh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x7;
+  let Inst{5-0} = 0x08;
+}
+def P_PMAXW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pmaxw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x3;
+  let Inst{5-0} = 0x08;
+}
+def P_PMFHI : InstSE<(outs GPR64Opnd:$rd), (ins),
+                 "pmfhi\t$rd", [], FrmOther>, StdArch {
+  bits<5> rd;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x8;
+  let Inst{5-0} = 0x09;
+}
+def P_PMFHL_LH : InstSE<(outs GPR64Opnd:$rd), (ins),
+                 "pmfhl.lh\t$rd", [], FrmOther>, StdArch {
+  bits<5> rd;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x3;
+  let Inst{5-0} = 0x30;
+}
+def P_PMFHL_LW : InstSE<(outs GPR64Opnd:$rd), (ins),
+                 "pmfhl.lw\t$rd", [], FrmOther>, StdArch {
+  bits<5> rd;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x30;
+}
+def P_PMFHL_SH : InstSE<(outs GPR64Opnd:$rd), (ins),
+                 "pmfhl.sh\t$rd", [], FrmOther>, StdArch {
+  bits<5> rd;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x4;
+  let Inst{5-0} = 0x30;
+}
+def P_PMFHL_SLW : InstSE<(outs GPR64Opnd:$rd), (ins),
+                 "pmfhl.slw\t$rd", [], FrmOther>, StdArch {
+  bits<5> rd;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x2;
+  let Inst{5-0} = 0x30;
+}
+def P_PMFHL_UW : InstSE<(outs GPR64Opnd:$rd), (ins),
+                 "pmfhl.uw\t$rd", [], FrmOther>, StdArch {
+  bits<5> rd;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1;
+  let Inst{5-0} = 0x30;
+}
+def P_PMFLO : InstSE<(outs GPR64Opnd:$rd), (ins),
+                 "pmflo\t$rd", [], FrmOther>, StdArch {
+  bits<5> rd;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x9;
+  let Inst{5-0} = 0x09;
+}
+def P_PMINH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pminh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x7;
+  let Inst{5-0} = 0x28;
+}
+def P_PMINW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pminw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x3;
+  let Inst{5-0} = 0x28;
+}
+def P_PMSUBH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pmsubh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x14;
+  let Inst{5-0} = 0x09;
+}
+def P_PMSUBW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pmsubw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x4;
+  let Inst{5-0} = 0x09;
+}
+def P_PMTHI : InstSE<(outs), (ins GPR64Opnd:$rs),
+                 "pmthi\t$rs", [], FrmOther>, StdArch {
+  bits<5> rs;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x8;
+  let Inst{5-0} = 0x29;
+}
+def P_PMTHL_LW : InstSE<(outs), (ins GPR64Opnd:$rs),
+                 "pmthl.lw\t$rs", [], FrmOther>, StdArch {
+  bits<5> rs;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x31;
+}
+def P_PMTLO : InstSE<(outs), (ins GPR64Opnd:$rs),
+                 "pmtlo\t$rs", [], FrmOther>, StdArch {
+  bits<5> rs;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x9;
+  let Inst{5-0} = 0x29;
+}
+def P_PMULTH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pmulth\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1c;
+  let Inst{5-0} = 0x09;
+}
+def P_PMULTUW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pmultuw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0xc;
+  let Inst{5-0} = 0x29;
+}
+def P_PMULTW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pmultw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0xc;
+  let Inst{5-0} = 0x09;
+}
+def P_PNOR : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pnor\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x13;
+  let Inst{5-0} = 0x29;
+}
+def P_POR : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "por\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x12;
+  let Inst{5-0} = 0x29;
+}
+def P_PPAC5 : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt),
+                 "ppac5\t$rd, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1f;
+  let Inst{5-0} = 0x08;
+}
+def P_PPACB : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "ppacb\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1b;
+  let Inst{5-0} = 0x08;
+}
+def P_PPACH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "ppach\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x17;
+  let Inst{5-0} = 0x08;
+}
+def P_PPACW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "ppacw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x13;
+  let Inst{5-0} = 0x08;
+}
+def P_PREVH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt),
+                 "prevh\t$rd, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1b;
+  let Inst{5-0} = 0x09;
+}
+def P_PROT3W : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt),
+                 "prot3w\t$rd, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1f;
+  let Inst{5-0} = 0x09;
+}
+def P_PSLLVW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt, GPR64Opnd:$rs),
+                 "psllvw\t$rd, $rt, $rs", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  bits<5> rs;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x2;
+  let Inst{5-0} = 0x09;
+}
+def P_PSRAVW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt, GPR64Opnd:$rs),
+                 "psravw\t$rd, $rt, $rs", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  bits<5> rs;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x3;
+  let Inst{5-0} = 0x29;
+}
+def P_PSRLVW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt, GPR64Opnd:$rs),
+                 "psrlvw\t$rd, $rt, $rs", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  bits<5> rs;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x3;
+  let Inst{5-0} = 0x09;
+}
+def P_PSUBSW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "psubsw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x11;
+  let Inst{5-0} = 0x08;
+}
+def P_PSUBUB : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "psubub\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x19;
+  let Inst{5-0} = 0x28;
+}
+def P_PSUBUH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "psubuh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x15;
+  let Inst{5-0} = 0x28;
+}
+def P_PSUBUW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "psubuw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x11;
+  let Inst{5-0} = 0x28;
+}
+def P_PXOR : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "pxor\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x13;
+  let Inst{5-0} = 0x09;
+}
+def P_QFSRV : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "qfsrv\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1b;
+  let Inst{5-0} = 0x28;
+}
+def P_PADDB : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "paddb\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x8;
+  let Inst{5-0} = 0x08;
+}
+def P_PADDH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "paddh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x4;
+  let Inst{5-0} = 0x08;
+}
+def P_PADDW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "paddw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x08;
+}
+def P_PADDSB : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "paddsb\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x18;
+  let Inst{5-0} = 0x08;
+}
+def P_PADDSH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "paddsh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x14;
+  let Inst{5-0} = 0x08;
+}
+def P_PSLLH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt, uimm5:$shamt),
+                 "psllh\t$rd, $rt, $shamt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  bits<5> shamt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = shamt;
+  let Inst{5-0} = 0x34;
+}
+def P_PSLLW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt, uimm5:$shamt),
+                 "psllw\t$rd, $rt, $shamt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  bits<5> shamt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = shamt;
+  let Inst{5-0} = 0x3c;
+}
+def P_PSRAH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt, uimm5:$shamt),
+                 "psrah\t$rd, $rt, $shamt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  bits<5> shamt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = shamt;
+  let Inst{5-0} = 0x37;
+}
+def P_PSRAW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt, uimm5:$shamt),
+                 "psraw\t$rd, $rt, $shamt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  bits<5> shamt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = shamt;
+  let Inst{5-0} = 0x3f;
+}
+def P_PSRLH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt, uimm5:$shamt),
+                 "psrlh\t$rd, $rt, $shamt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  bits<5> shamt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = shamt;
+  let Inst{5-0} = 0x36;
+}
+def P_PSRLW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rt, uimm5:$shamt),
+                 "psrlw\t$rd, $rt, $shamt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rt;
+  bits<5> shamt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = shamt;
+  let Inst{5-0} = 0x3e;
+}
+def P_PSUBB : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "psubb\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x9;
+  let Inst{5-0} = 0x08;
+}
+def P_PSUBH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "psubh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x5;
+  let Inst{5-0} = 0x08;
+}
+def P_PSUBW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "psubw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x1;
+  let Inst{5-0} = 0x08;
+}
+def P_PSUBSB : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "psubsb\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x19;
+  let Inst{5-0} = 0x08;
+}
+def P_PSUBSH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "psubsh\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x15;
+  let Inst{5-0} = 0x08;
+}
+def P_MULT1 : InstSE<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "mult1\t$rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x18;
+}
+def P_MULTU1 : InstSE<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "multu1\t$rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x19;
+}
+def P_DIV1 : InstSE<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "div1\t$rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x1a;
+}
+def P_DIVU1 : InstSE<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "divu1\t$rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x1b;
+}
+def P_MADD1 : InstSE<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "madd1\t$rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x20;
+}
+def P_MADDU1 : InstSE<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "maddu1\t$rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x21;
+}
+def P_MFHI1 : InstSE<(outs GPR64Opnd:$rd), (ins),
+                 "mfhi1\t$rd", [], FrmOther>, StdArch {
+  bits<5> rd;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x10;
+}
+def P_MFLO1 : InstSE<(outs GPR64Opnd:$rd), (ins),
+                 "mflo1\t$rd", [], FrmOther>, StdArch {
+  bits<5> rd;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x12;
+}
+def P_MTHI1 : InstSE<(outs), (ins GPR64Opnd:$rs),
+                 "mthi1\t$rs", [], FrmOther>, StdArch {
+  bits<5> rs;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x11;
+}
+def P_MTLO1 : InstSE<(outs), (ins GPR64Opnd:$rs),
+                 "mtlo1\t$rs", [], FrmOther>, StdArch {
+  bits<5> rs;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x13;
+}
+def P_MFSA : InstSE<(outs GPR64Opnd:$rd), (ins),
+                 "mfsa\t$rd", [], FrmOther>, StdArch {
+  bits<5> rd;
+  let Inst{31-26} = 0x00;
+  let Inst{25-21} = 0x0;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x28;
+}
+def P_MTSA : InstSE<(outs), (ins GPR64Opnd:$rs),
+                 "mtsa\t$rs", [], FrmOther>, StdArch {
+  bits<5> rs;
+  let Inst{31-26} = 0x00;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = 0x0;
+  let Inst{15-11} = 0x0;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x29;
+}
+def P_MTSAB : InstSE<(outs), (ins GPR64Opnd:$rs, uimm16:$imm16),
+                 "mtsab\t$rs, $imm16", [], FrmOther>, StdArch {
+  bits<5> rs;
+  bits<16> imm16;
+  let Inst{31-26} = 0x01;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = 0x18;
+  let Inst{15-0} = imm16;
+}
+def P_MTSAH : InstSE<(outs), (ins GPR64Opnd:$rs, uimm16:$imm16),
+                 "mtsah\t$rs, $imm16", [], FrmOther>, StdArch {
+  bits<5> rs;
+  bits<16> imm16;
+  let Inst{31-26} = 0x01;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = 0x19;
+  let Inst{15-0} = imm16;
+}
+def P_MOVN : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "movn\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x0;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x0b;
+}
+def P_MOVZ : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+                 "movz\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x0;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x0;
+  let Inst{5-0} = 0x0a;
+}
+}

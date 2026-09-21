@@ -15,14 +15,11 @@ Before trusting the result, rebuild and rerun the checks:
     scratch/llvm-mmi-test    (make, run in PCSX2, expect 22/22 PASS)
     scratch/llvm-makefile-test    (make, run in PCSX2)
 
-## Updating the published copy (this repo)
+## Pushing to the private remote
 
-r5900-ee lives in the full local clone with real upstream history behind
-it. This repo is a stripped copy of the same 3 commits with a fake root
-instead of ~600k commits of LLVM history, so it can't just be pushed
-straight from r5900-ee after a rebase - the root has to move too, since
-its tree is the new base commit's tree.
+git.techwritescode.dev/ps2/llvm is a real migrated copy of llvm/llvm-project,
+not a squashed history - main tracks upstream, r5900-ee carries our commits
+on top. After a rebase:
 
-    NEWROOT=$(git commit-tree <upstream-commit>^{tree} -m "base")
-    git rebase --onto $NEWROOT <old-root-commit> r5900-ee-publish
-    git push --force ps2-fork r5900-ee-publish:main
+    git push ps2-fork main            # keep main in sync with upstream
+    git push --force ps2-fork r5900-ee

@@ -242,6 +242,9 @@ def UseCompactBranches : Predicate<"Subtarget->useCompactBranches()">,
 def HasVU0 : Predicate<"Subtarget->hasVU0()">,
             AssemblerPredicate<(all_of FeatureVU0)>;
 
+def IsR5900Pred : Predicate<"Subtarget->isR5900()">,
+                  AssemblerPredicate<(all_of FeatureR5900)>;
+
 //===----------------------------------------------------------------------===//
 // HwModes
 //===----------------------------------------------------------------------===//

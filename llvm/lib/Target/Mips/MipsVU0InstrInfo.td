@@ -1015,3 +1015,54 @@ def BC2T  : VU0_BC2_DESC<"bc2t">,  VU0_BC2_FM<0b00001>;
 def BC2FL : VU0_BC2_DESC<"bc2fl">, VU0_BC2_FM<0b00010>;
 def BC2TL : VU0_BC2_DESC<"bc2tl">, VU0_BC2_FM<0b00011>;
 }
+
+//===----------------------------------------------------------------------===//
+// lq/sq: R5900 base-ISA 128-bit GPR quadword load/store - NOT VU0/COP2 (no
+// CO-bit, no COP2 major opcode); real EE hardware GPRs are natively 128
+// bits wide even though the N32/N64 ABI only ever uses the low 64, and
+// these instructions move the full register. Tagged "MMI" (MIPS
+// Multimedia Instructions) in opcodes/mips-opc.c, not VU0 - found missing
+// from upstream's own R5900 patch while porting newlib (libc/machine/
+// r5900/setjmp.S uses both to save/restore full 128-bit callee-saved
+// GPRs). Same base+offset shape as plain LW/SW (MipsInstrFormats.td's
+// LW_FM), reusing GPR64Opnd for the register operand - clang doesn't
+// need a 128-bit GPR class to encode "move the register named $s0",
+// same reasoning as VU0's asm-only scope above. opcodes/mips-opc.c:
+// lq=0x78000000 (op 0x1e), sq=0x7c000000 (op 0x1f).
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, DecoderNamespace = "VU0" in {
+def LQ : InstSE<(outs GPR64Opnd:$rt), (ins mem:$addr), "lq\t$rt, $addr",
+                [], FrmFI>, LW_FM<0x1e> {
+  let DecoderMethod = "DecodeMem";
+  let mayLoad = 1;
+}
+def SQ : InstSE<(outs), (ins GPR64Opnd:$rt, mem:$addr), "sq\t$rt, $addr",
+                [], FrmFI>, LW_FM<0x1f> {
+  let DecoderMethod = "DecodeMem";
+  let mayStore = 1;
+}
+}
+
+// di/ei (disable/enable interrupts) and sync.p: found missing, same way
+// as lq/sq, while porting sdk-core's kernel.S (glue.c's DIntr/EIntr use
+// di/ei directly via inline asm; kernel.h's EE_SYNCP() macro uses
+// sync.p). opcodes/mips-opc.c tags the no-operand di/ei forms "EE"
+// specifically (0x42000039/0x42000038 - distinct from the operand-taking
+// MIPS32R2 "I33" forms at a different encoding, which upstream doesn't
+// support for r5900 anyway since it's MIPS3-based); sync.p is tagged
+// "I2" (MIPS II) but its encoding is a fully-fixed no-operand alias
+// (0x0000040f), same shape as vnop above.
+// VU0_-prefixed (not the plain DI/EI mips-opc.c uses) - upstream already
+// defines DI/EI for MIPS32R2 (MipsInstrInfo.td, operand-taking GPR32
+// form, different encoding); same reasoning as VU0_BC2EQZ/VU0_BC2NEZ
+// earlier. Mnemonic text (what the assembler matches on) is unaffected.
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1 in {
+def VU0_DI : InstSE<(outs), (ins), "di", [], FrmOther>, StdArch {
+  let Inst = 0x42000039;
+}
+def VU0_EI : InstSE<(outs), (ins), "ei", [], FrmOther>, StdArch {
+  let Inst = 0x42000038;
+}
+def SYNC_P : InstSE<(outs), (ins), "sync.p", [], FrmOther>, StdArch {
+  let Inst = 0x0000040f;
+}
+}

@@ -511,6 +511,10 @@ def VU0VI : RegisterClass<"Mips", [untyped], 16, (sequence "VI%u", 0, 15)>,
             Unallocatable;
 def VU0ACC : RegisterClass<"Mips", [untyped], 128, (add ACC)>,
              Unallocatable;
+def VU0QRC : RegisterClass<"Mips", [untyped], 32, (add VU0Q)>,
+             Unallocatable;
+def VU0IRC : RegisterClass<"Mips", [untyped], 16, (add VU0I)>,
+             Unallocatable;
 
 // Stack pointer and global pointer classes for instructions that are limited
 // to a single register such as lwgp/lwsp in microMIPS.
@@ -643,6 +647,42 @@ def VU0VFAsmOperand : MipsAsmRegOperand {
 
 def VU0VIAsmOperand : MipsAsmRegOperand {
   let Name = "VU0VIAsmReg";
+}
+
+def VU0ACCAsmOperand : MipsAsmRegOperand {
+  let Name = "VU0ACCAsmReg";
+}
+
+def VU0QAsmOperand : MipsAsmRegOperand {
+  let Name = "VU0QAsmReg";
+}
+
+def VU0IAsmOperand : MipsAsmRegOperand {
+  let Name = "VU0IAsmReg";
+}
+
+// vdiv/vrsqrt's fs/ft lane-suffixed register operands - see
+// RegKind_VU0VFx's comment in MipsAsmParser.cpp for why these are
+// distinct classes rather than reusing VU0VFAsmOperand. RenderMethod
+// reuses VU0VFOpnd's own addVU0VFAsmRegOperands - a lane-tagged operand
+// is still a completely ordinary VU0VF register once parsed, the lane
+// distinction only matters for which Instruction/InstAlias variant it's
+// allowed to satisfy.
+def VU0VFxAsmOperand : MipsAsmRegOperand {
+  let Name = "VU0VFxAsmReg";
+  let RenderMethod = "addVU0VFAsmRegOperands";
+}
+def VU0VFyAsmOperand : MipsAsmRegOperand {
+  let Name = "VU0VFyAsmReg";
+  let RenderMethod = "addVU0VFAsmRegOperands";
+}
+def VU0VFzAsmOperand : MipsAsmRegOperand {
+  let Name = "VU0VFzAsmReg";
+  let RenderMethod = "addVU0VFAsmRegOperands";
+}
+def VU0VFwAsmOperand : MipsAsmRegOperand {
+  let Name = "VU0VFwAsmReg";
+  let RenderMethod = "addVU0VFAsmRegOperands";
 }
 
 def GPR32ZeroOpnd : RegisterOperand<GPR32ZERO> {
@@ -780,6 +820,43 @@ def VU0VFOpnd : RegisterOperand<VU0VF> {
 
 def VU0VIOpnd : RegisterOperand<VU0VI> {
   let ParserMatchClass = VU0VIAsmOperand;
+}
+
+def VU0VFxOpnd : RegisterOperand<VU0VF> {
+  let ParserMatchClass = VU0VFxAsmOperand;
+}
+def VU0VFyOpnd : RegisterOperand<VU0VF> {
+  let ParserMatchClass = VU0VFyAsmOperand;
+}
+def VU0VFzOpnd : RegisterOperand<VU0VF> {
+  let ParserMatchClass = VU0VFzAsmOperand;
+}
+def VU0VFwOpnd : RegisterOperand<VU0VF> {
+  let ParserMatchClass = VU0VFwAsmOperand;
+}
+
+// $ACC: real GNU as syntax for VU0's ACC-writing macro-mode instructions
+// (vmula/vmadda/vmulax/.../vaddai/...) always spells the implicit
+// accumulator destination out as an explicit leading operand
+// ("vmulax.xyzw $ACC, $vf5, $vf1"), even though it's the only member of
+// VU0ACC and never varies - found while porting sdk-core's math3d.c/
+// vuhw.c. Needs its own ParserMatchClass + a matchVU0ACCRegisterName in
+// MipsAsmParser.cpp (same mechanism as VU0VF/VU0VI's own matchers just
+// above) - unlike ordinary GPR/FGR names, "ACC" is never reachable
+// through the base parser's generic register-name table on its own.
+def VU0ACCOpnd : RegisterOperand<VU0ACC> {
+  let ParserMatchClass = VU0ACCAsmOperand;
+}
+// $Q: same "real gas spells the implicit destination out explicitly"
+// story as VU0ACCOpnd, for vdiv/vrsqrt/vsqrt's implicit Q register
+// (found while porting sdk-core's math3d.c: "vrsqrt $Q, $vf0w, $vf2w").
+def VU0QOpnd : RegisterOperand<VU0QRC> {
+  let ParserMatchClass = VU0QAsmOperand;
+}
+// $I: same story as VU0QOpnd, for the vaddi/vmaddi/vmuli/vmsubi/vsubi/
+// vmaxi/vminii family's implicit I (integer-broadcast) register operand.
+def VU0IOpnd : RegisterOperand<VU0IRC> {
+  let ParserMatchClass = VU0IAsmOperand;
 }
 
 def MSA128BOpnd : RegisterOperand<MSA128B> {

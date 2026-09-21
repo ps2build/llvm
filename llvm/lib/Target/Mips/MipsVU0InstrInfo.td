@@ -71,12 +71,14 @@ class VU0_3R_DESC<string opstr> :
 }
 
 class VU0_ACC_DESC<string opstr> :
-  InstSE<(outs), (ins VU0VFOpnd:$fs, VU0VFOpnd:$ft),
-         !strconcat(opstr, "\t$fs, $ft"), [], FrmOther> {
+  InstSE<(outs), (ins VU0ACCOpnd:$acc, VU0VFOpnd:$fs, VU0VFOpnd:$ft),
+         !strconcat(opstr, "\t$acc, $fs, $ft"), [], FrmOther> {
   let Predicates = [HasVU0];
   let DecoderNamespace = "Mips";
   let hasNoSchedulingInfo = 1;
-  // Implicit accumulator destination - see VU0_ACC_FM's comment.
+  // $acc is asm-only decoration (see VU0ACCOpnd) - the real destination
+  // is always the same implicit ACC register, declared here too so
+  // codegen/scheduling sees the write.
   let Defs = [ACC];
 }
 
@@ -98,6 +100,15 @@ multiclass VU0_3R_Arith<string opstr, bits<6> funct> {
   def _xzw  : VU0_3R_DESC<opstr#".xzw">,  VU0_3R_FM<funct, 0b1011>;
   def _yzw  : VU0_3R_DESC<opstr#".yzw">,  VU0_3R_FM<funct, 0b0111>;
   def _xyzw : VU0_3R_DESC<opstr#".xyzw">, VU0_3R_FM<funct, 0b1111>;
+  // See VU0_ACC_Arith's bare-mnemonic alias below - same shorthand. A
+  // real alternate spelling of the identical _xyzw encoding needs to be
+  // an InstAlias, not a second Instruction def - two Instructions with
+  // the same Inst bits is a disassembler-table conflict, since InstAlias
+  // never gets its own disassembler-table entry (it just names another
+  // way to parse/print an existing real instruction).
+  def : MipsInstAlias<!strconcat(opstr, " $fd, $fs, $ft"),
+          (!cast<Instruction>(NAME#"_xyzw") VU0VFOpnd:$fd, VU0VFOpnd:$fs,
+                                             VU0VFOpnd:$ft), 1>;
 }
 
 multiclass VU0_ACC_Arith<string opstr, bits<11> funct> {
@@ -116,6 +127,13 @@ multiclass VU0_ACC_Arith<string opstr, bits<11> funct> {
   def _xzw  : VU0_ACC_DESC<opstr#".xzw">,  VU0_ACC_FM<funct, 0b1011>;
   def _yzw  : VU0_ACC_DESC<opstr#".yzw">,  VU0_ACC_FM<funct, 0b0111>;
   def _xyzw : VU0_ACC_DESC<opstr#".xyzw">, VU0_ACC_FM<funct, 0b1111>;
+  // Real GNU as also accepts the bare mnemonic (no dot) as shorthand for
+  // the full-xyzw destination field mask - found while porting sdk-core's
+  // math3d.c ("vmulaw $ACC, $vf4, $vf0", no ".xyzw"). An InstAlias, not a
+  // second Instruction def - see VU0_3R_Arith's own alias above for why.
+  def : MipsInstAlias<!strconcat(opstr, " $acc, $fs, $ft"),
+          (!cast<Instruction>(NAME#"_xyzw") VU0ACCOpnd:$acc, VU0VFOpnd:$fs,
+                                             VU0VFOpnd:$ft), 1>;
 }
 
 // opcodes/mips-opc.c: vadd=0x4a000028, vsub=0x4a00002c, vmul=0x4a00002a
@@ -135,11 +153,24 @@ defm VMULA : VU0_ACC_Arith<"vmula", 0x2be>;
 // MFC3OP_FM<0x12, mfmt, 0>) - R5900 repurposes the DMFC2/DMTC2 mfmt slots
 // (1 and 5) for the 128-bit qmfc2/qmtc2 transfer instead, per
 // opcodes/mips-opc.c (qmfc2=0x48200000, qmtc2=0x48a00000, both mfmt @ bits
-// 25-21 = 1 / 5). $sel is always 0 on real hardware; kept as a written
-// operand rather than special-cased, matching how DMFC2/DMTC2 already do.
+// 25-21 = 1 / 5). Real syntax ("t,+6" in mips-opc.c) is 2-operand only,
+// no $sel at all - MFC3OP is the wrong class here (it's a 3-operand
+// class built for COP0's select-capable MFC0 form, same mismatch CFC2/
+// CTC2 hit elsewhere in this file); own 2-operand class instead.
+class QMFC2OP<string asmstr, bits<5> mfmt, dag outs, dag ins> :
+  InstSE<outs, ins, !strconcat(asmstr, "\t$rt, $rd"), [], FrmFR>, StdArch {
+  bits<5> rt;
+  bits<5> rd;
+  let Inst{31-26} = 0x12;
+  let Inst{25-21} = mfmt;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-0}  = 0;
+}
+
 let Predicates = [HasVU0], hasNoSchedulingInfo = 1 in {
-def QMFC2 : MFC3OP<"qmfc2", GPR64Opnd, VU0VFOpnd>, MFC3OP_FM<0x12, 1, 0>;
-def QMTC2 : MTC3OP<"qmtc2", VU0VFOpnd, GPR64Opnd>, MFC3OP_FM<0x12, 5, 0>;
+def QMFC2 : QMFC2OP<"qmfc2", 1, (outs GPR64Opnd:$rt), (ins VU0VFOpnd:$rd)>;
+def QMTC2 : QMFC2OP<"qmtc2", 5, (outs), (ins GPR64Opnd:$rt, VU0VFOpnd:$rd)>;
 }
 
 // opcodes/mips-opc.c: vnop=0x4a0002ff, mask=0xffffffff (fully fixed, no
@@ -230,14 +261,29 @@ def SQC2 : InstSE<(outs), (ins VU0VFOpnd:$vf, mem:$addr), "sqc2\t$vf, $addr",
 // per-instruction mask choice exists (unlike vadd/vmula/etc above). Reuses
 // the existing VU0_ACC_FM/VU0_3R_FM shapes directly with that mask baked
 // in; vopmula=0x2fe (11-bit funct), vopmsub=0x2e (6-bit funct).
+// opcodes/mips-opc.c lists both "vopmula"/"vopmsub" and their
+// ".xyz"-suffixed spellings as separate, identically-encoded mnemonics
+// (the channel field being fixed rather than selectable means there's
+// no real distinction) - both accepted here for the same reason. vopmula
+// also needs the explicit $ACC operand real gas requires, same as the
+// rest of the ACC-writing family (VU0_ACC_DESC).
 let Predicates = [HasVU0], hasNoSchedulingInfo = 1, DecoderNamespace = "Mips" in {
-def VOPMULA : InstSE<(outs), (ins VU0VFOpnd:$fs, VU0VFOpnd:$ft),
-                     "vopmula\t$fs, $ft", [], FrmOther>, VU0_ACC_FM<0x2fe, 0b1110> {
+def VOPMULA : InstSE<(outs), (ins VU0ACCOpnd:$acc, VU0VFOpnd:$fs, VU0VFOpnd:$ft),
+                     "vopmula\t$acc, $fs, $ft", [], FrmOther>, VU0_ACC_FM<0x2fe, 0b1110> {
   let Defs = [ACC];
 }
 def VOPMSUB : InstSE<(outs VU0VFOpnd:$fd), (ins VU0VFOpnd:$fs, VU0VFOpnd:$ft),
                      "vopmsub\t$fd, $fs, $ft", [], FrmOther>, VU0_3R_FM<0x2e, 0b1110>;
 }
+// ".xyz"-suffixed spellings of both - identical encoding (the channel
+// field is fixed, not selectable, see comment above), so these are
+// InstAlias, not second Instruction defs (would collide in the
+// disassembler table, same reasoning as VU0_3R_Arith's bare-mnemonic
+// alias further up this file).
+def : MipsInstAlias<"vopmula.xyz $acc, $fs, $ft",
+        (VOPMULA VU0ACCOpnd:$acc, VU0VFOpnd:$fs, VU0VFOpnd:$ft), 1>;
+def : MipsInstAlias<"vopmsub.xyz $fd, $fs, $ft",
+        (VOPMSUB VU0VFOpnd:$fd, VU0VFOpnd:$fs, VU0VFOpnd:$ft), 1>;
 
 // vclipw: FS-mask AND FT-lane are BOTH fixed in the opcode/mask (mask ==
 // 0xffe007ff leaves only fs/ft register-number bits variable - the 4-bit
@@ -261,6 +307,10 @@ class VU0_CLIPW_FM : StdArch {
 let Predicates = [HasVU0], hasNoSchedulingInfo = 1, DecoderNamespace = "Mips" in
 def VCLIPW : InstSE<(outs), (ins VU0VFOpnd:$fs, VU0VFOpnd:$ft),
                     "vclipw\t$fs, $ft", [], FrmOther>, VU0_CLIPW_FM;
+// opcodes/mips-opc.c also lists a ".xyz"-suffixed spelling, identical
+// encoding (same reasoning as vopmula.xyz/vopmsub.xyz above).
+def : MipsInstAlias<"vclipw.xyz $fs, $ft",
+        (VCLIPW VU0VFOpnd:$fs, VU0VFOpnd:$ft), 1>;
 
 // vrget/vrnext: FT-slot dest with the usual 15-combo channel mask, source
 // is the implicit $R register (0 encoded bits, same "+r" REG(0,0,R5900_R)
@@ -552,35 +602,42 @@ class VU0_QDIV_FM<bits<11> funct, bits<2> flane, bits<2> mlane> : StdArch {
   let Inst{10-0}  = funct;
 }
 
-class VU0_QDIV_DESC<string opstr> :
-  InstSE<(outs), (ins VU0VFOpnd:$fs, VU0VFOpnd:$ft), !strconcat(opstr, "\t$fs, $ft"),
-         [], FrmOther> {
+// Real GNU as syntax (opcodes/mips-opc.c: "+q,+6+L,+7+M") has no dotted
+// mnemonic suffix at all - the lane select is spelled as a trailing
+// x/y/z/w letter on the fs/ft register names themselves ("vrsqrt $Q,
+// $vf0w, $vf2w"), a real, meaningful 2-bit field per operand (unlike
+// every OTHER VU0 operand suffix in this file, which is decorative) -
+// found while porting sdk-core's math3d.c. FSOpnd/FTOpnd are the
+// matching VU0VFx/y/z/wOpnd lane-specific classes (MipsRegisterInfo.td)
+// so the AsmMatcher picks the right encoding by which lane letters were
+// actually typed, same bare "vdiv"/"vrsqrt" mnemonic for all 16.
+class VU0_QDIV_DESC<string opstr, RegisterOperand FSOpnd,
+                     RegisterOperand FTOpnd> :
+  InstSE<(outs), (ins VU0QOpnd:$q, FSOpnd:$fs, FTOpnd:$ft),
+         !strconcat(opstr, "\t$q, $fs, $ft"), [], FrmOther> {
   let Predicates = [HasVU0];
   let DecoderNamespace = "Mips";
   let hasNoSchedulingInfo = 1;
   let Defs = [VU0Q];
 }
 
-// Mnemonic suffix is two lane letters: FS's lane then FT's lane (e.g.
-// "vdiv.xw" divides FS.x by FT.w) - own literal-mnemonic scheme, same
-// discretion-on-syntax basis as the rest of this file.
 multiclass VU0_QDIV_Arith<string opstr, bits<11> funct> {
-  def _xx : VU0_QDIV_DESC<opstr#".xx">, VU0_QDIV_FM<funct, 0b00, 0b00>;
-  def _xy : VU0_QDIV_DESC<opstr#".xy">, VU0_QDIV_FM<funct, 0b00, 0b01>;
-  def _xz : VU0_QDIV_DESC<opstr#".xz">, VU0_QDIV_FM<funct, 0b00, 0b10>;
-  def _xw : VU0_QDIV_DESC<opstr#".xw">, VU0_QDIV_FM<funct, 0b00, 0b11>;
-  def _yx : VU0_QDIV_DESC<opstr#".yx">, VU0_QDIV_FM<funct, 0b01, 0b00>;
-  def _yy : VU0_QDIV_DESC<opstr#".yy">, VU0_QDIV_FM<funct, 0b01, 0b01>;
-  def _yz : VU0_QDIV_DESC<opstr#".yz">, VU0_QDIV_FM<funct, 0b01, 0b10>;
-  def _yw : VU0_QDIV_DESC<opstr#".yw">, VU0_QDIV_FM<funct, 0b01, 0b11>;
-  def _zx : VU0_QDIV_DESC<opstr#".zx">, VU0_QDIV_FM<funct, 0b10, 0b00>;
-  def _zy : VU0_QDIV_DESC<opstr#".zy">, VU0_QDIV_FM<funct, 0b10, 0b01>;
-  def _zz : VU0_QDIV_DESC<opstr#".zz">, VU0_QDIV_FM<funct, 0b10, 0b10>;
-  def _zw : VU0_QDIV_DESC<opstr#".zw">, VU0_QDIV_FM<funct, 0b10, 0b11>;
-  def _wx : VU0_QDIV_DESC<opstr#".wx">, VU0_QDIV_FM<funct, 0b11, 0b00>;
-  def _wy : VU0_QDIV_DESC<opstr#".wy">, VU0_QDIV_FM<funct, 0b11, 0b01>;
-  def _wz : VU0_QDIV_DESC<opstr#".wz">, VU0_QDIV_FM<funct, 0b11, 0b10>;
-  def _ww : VU0_QDIV_DESC<opstr#".ww">, VU0_QDIV_FM<funct, 0b11, 0b11>;
+  def _xx : VU0_QDIV_DESC<opstr, VU0VFxOpnd, VU0VFxOpnd>, VU0_QDIV_FM<funct, 0b00, 0b00>;
+  def _xy : VU0_QDIV_DESC<opstr, VU0VFxOpnd, VU0VFyOpnd>, VU0_QDIV_FM<funct, 0b00, 0b01>;
+  def _xz : VU0_QDIV_DESC<opstr, VU0VFxOpnd, VU0VFzOpnd>, VU0_QDIV_FM<funct, 0b00, 0b10>;
+  def _xw : VU0_QDIV_DESC<opstr, VU0VFxOpnd, VU0VFwOpnd>, VU0_QDIV_FM<funct, 0b00, 0b11>;
+  def _yx : VU0_QDIV_DESC<opstr, VU0VFyOpnd, VU0VFxOpnd>, VU0_QDIV_FM<funct, 0b01, 0b00>;
+  def _yy : VU0_QDIV_DESC<opstr, VU0VFyOpnd, VU0VFyOpnd>, VU0_QDIV_FM<funct, 0b01, 0b01>;
+  def _yz : VU0_QDIV_DESC<opstr, VU0VFyOpnd, VU0VFzOpnd>, VU0_QDIV_FM<funct, 0b01, 0b10>;
+  def _yw : VU0_QDIV_DESC<opstr, VU0VFyOpnd, VU0VFwOpnd>, VU0_QDIV_FM<funct, 0b01, 0b11>;
+  def _zx : VU0_QDIV_DESC<opstr, VU0VFzOpnd, VU0VFxOpnd>, VU0_QDIV_FM<funct, 0b10, 0b00>;
+  def _zy : VU0_QDIV_DESC<opstr, VU0VFzOpnd, VU0VFyOpnd>, VU0_QDIV_FM<funct, 0b10, 0b01>;
+  def _zz : VU0_QDIV_DESC<opstr, VU0VFzOpnd, VU0VFzOpnd>, VU0_QDIV_FM<funct, 0b10, 0b10>;
+  def _zw : VU0_QDIV_DESC<opstr, VU0VFzOpnd, VU0VFwOpnd>, VU0_QDIV_FM<funct, 0b10, 0b11>;
+  def _wx : VU0_QDIV_DESC<opstr, VU0VFwOpnd, VU0VFxOpnd>, VU0_QDIV_FM<funct, 0b11, 0b00>;
+  def _wy : VU0_QDIV_DESC<opstr, VU0VFwOpnd, VU0VFyOpnd>, VU0_QDIV_FM<funct, 0b11, 0b01>;
+  def _wz : VU0_QDIV_DESC<opstr, VU0VFwOpnd, VU0VFzOpnd>, VU0_QDIV_FM<funct, 0b11, 0b10>;
+  def _ww : VU0_QDIV_DESC<opstr, VU0VFwOpnd, VU0VFwOpnd>, VU0_QDIV_FM<funct, 0b11, 0b11>;
 }
 
 defm VDIV   : VU0_QDIV_Arith<"vdiv", 0x3bc>;
@@ -605,18 +662,21 @@ class VU0_QSQRT_FM<bits<2> mlane> : StdArch {
   let Inst{10-0}  = 0x3bd;
 }
 
-class VU0_QSQRT_DESC<string opstr> :
-  InstSE<(outs), (ins VU0VFOpnd:$ft), !strconcat(opstr, "\t$ft"), [], FrmOther> {
+// Bare mnemonic, lane-typed $ft operand - same real-syntax story as
+// VU0_QDIV_DESC above (opcodes/mips-opc.c: vsqrt = "+q,+7+M").
+class VU0_QSQRT_DESC<string opstr, RegisterOperand FTOpnd> :
+  InstSE<(outs), (ins VU0QOpnd:$q, FTOpnd:$ft),
+         !strconcat(opstr, "\t$q, $ft"), [], FrmOther> {
   let Predicates = [HasVU0];
   let DecoderNamespace = "Mips";
   let hasNoSchedulingInfo = 1;
   let Defs = [VU0Q];
 }
 
-def VSQRT_x : VU0_QSQRT_DESC<"vsqrt.x">, VU0_QSQRT_FM<0b00>;
-def VSQRT_y : VU0_QSQRT_DESC<"vsqrt.y">, VU0_QSQRT_FM<0b01>;
-def VSQRT_z : VU0_QSQRT_DESC<"vsqrt.z">, VU0_QSQRT_FM<0b10>;
-def VSQRT_w : VU0_QSQRT_DESC<"vsqrt.w">, VU0_QSQRT_FM<0b11>;
+def VSQRT_x : VU0_QSQRT_DESC<"vsqrt", VU0VFxOpnd>, VU0_QSQRT_FM<0b00>;
+def VSQRT_y : VU0_QSQRT_DESC<"vsqrt", VU0VFyOpnd>, VU0_QSQRT_FM<0b01>;
+def VSQRT_z : VU0_QSQRT_DESC<"vsqrt", VU0VFzOpnd>, VU0_QSQRT_FM<0b10>;
+def VSQRT_w : VU0_QSQRT_DESC<"vsqrt", VU0VFwOpnd>, VU0_QSQRT_FM<0b11>;
 
 // viaddi: VI dest/src like the plain integer ops above, but a 5-bit
 // signed immediate (+g, SINT(5,6) => bits10-6) in place of a third VI
@@ -788,47 +848,84 @@ class VU0_2R_FM<bits<6> funct, bits<4> mask> : StdArch {
   let Inst{5-0}   = funct;
 }
 
-class VU0_2R_DESC<string opstr> :
-  InstSE<(outs VU0VFOpnd:$fd), (ins VU0VFOpnd:$fs),
-         !strconcat(opstr, "\t$fd, $fs"), [], FrmOther> {
+// Real GNU as also spells this family's implicit third source operand
+// out explicitly ("vmulq.xyz $vf1, $vf1, $Q") - same story as
+// VU0ACCOpnd/VU0QOpnd elsewhere in this file. Split by which special
+// register each opstr actually uses (found while porting sdk-core's
+// math3d.c, which only exercises the Q half so far).
+class VU0_2R_Q_DESC<string opstr> :
+  InstSE<(outs VU0VFOpnd:$fd), (ins VU0VFOpnd:$fs, VU0QOpnd:$q),
+         !strconcat(opstr, "\t$fd, $fs, $q"), [], FrmOther> {
   let Predicates = [HasVU0];
   let DecoderNamespace = "Mips";
   let hasNoSchedulingInfo = 1;
 }
 
-multiclass VU0_2R_Arith<string opstr, bits<6> funct> {
-  def _x    : VU0_2R_DESC<opstr#".x">,    VU0_2R_FM<funct, 0b1000>;
-  def _y    : VU0_2R_DESC<opstr#".y">,    VU0_2R_FM<funct, 0b0100>;
-  def _z    : VU0_2R_DESC<opstr#".z">,    VU0_2R_FM<funct, 0b0010>;
-  def _w    : VU0_2R_DESC<opstr#".w">,    VU0_2R_FM<funct, 0b0001>;
-  def _xy   : VU0_2R_DESC<opstr#".xy">,   VU0_2R_FM<funct, 0b1100>;
-  def _xz   : VU0_2R_DESC<opstr#".xz">,   VU0_2R_FM<funct, 0b1010>;
-  def _xw   : VU0_2R_DESC<opstr#".xw">,   VU0_2R_FM<funct, 0b1001>;
-  def _yz   : VU0_2R_DESC<opstr#".yz">,   VU0_2R_FM<funct, 0b0110>;
-  def _yw   : VU0_2R_DESC<opstr#".yw">,   VU0_2R_FM<funct, 0b0101>;
-  def _zw   : VU0_2R_DESC<opstr#".zw">,   VU0_2R_FM<funct, 0b0011>;
-  def _xyz  : VU0_2R_DESC<opstr#".xyz">,  VU0_2R_FM<funct, 0b1110>;
-  def _xyw  : VU0_2R_DESC<opstr#".xyw">,  VU0_2R_FM<funct, 0b1101>;
-  def _xzw  : VU0_2R_DESC<opstr#".xzw">,  VU0_2R_FM<funct, 0b1011>;
-  def _yzw  : VU0_2R_DESC<opstr#".yzw">,  VU0_2R_FM<funct, 0b0111>;
-  def _xyzw : VU0_2R_DESC<opstr#".xyzw">, VU0_2R_FM<funct, 0b1111>;
+class VU0_2R_I_DESC<string opstr> :
+  InstSE<(outs VU0VFOpnd:$fd), (ins VU0VFOpnd:$fs, VU0IOpnd:$i),
+         !strconcat(opstr, "\t$fd, $fs, $i"), [], FrmOther> {
+  let Predicates = [HasVU0];
+  let DecoderNamespace = "Mips";
+  let hasNoSchedulingInfo = 1;
+}
+
+multiclass VU0_2R_Q_Arith<string opstr, bits<6> funct> {
+  def _x    : VU0_2R_Q_DESC<opstr#".x">,    VU0_2R_FM<funct, 0b1000>;
+  def _y    : VU0_2R_Q_DESC<opstr#".y">,    VU0_2R_FM<funct, 0b0100>;
+  def _z    : VU0_2R_Q_DESC<opstr#".z">,    VU0_2R_FM<funct, 0b0010>;
+  def _w    : VU0_2R_Q_DESC<opstr#".w">,    VU0_2R_FM<funct, 0b0001>;
+  def _xy   : VU0_2R_Q_DESC<opstr#".xy">,   VU0_2R_FM<funct, 0b1100>;
+  def _xz   : VU0_2R_Q_DESC<opstr#".xz">,   VU0_2R_FM<funct, 0b1010>;
+  def _xw   : VU0_2R_Q_DESC<opstr#".xw">,   VU0_2R_FM<funct, 0b1001>;
+  def _yz   : VU0_2R_Q_DESC<opstr#".yz">,   VU0_2R_FM<funct, 0b0110>;
+  def _yw   : VU0_2R_Q_DESC<opstr#".yw">,   VU0_2R_FM<funct, 0b0101>;
+  def _zw   : VU0_2R_Q_DESC<opstr#".zw">,   VU0_2R_FM<funct, 0b0011>;
+  def _xyz  : VU0_2R_Q_DESC<opstr#".xyz">,  VU0_2R_FM<funct, 0b1110>;
+  def _xyw  : VU0_2R_Q_DESC<opstr#".xyw">,  VU0_2R_FM<funct, 0b1101>;
+  def _xzw  : VU0_2R_Q_DESC<opstr#".xzw">,  VU0_2R_FM<funct, 0b1011>;
+  def _yzw  : VU0_2R_Q_DESC<opstr#".yzw">,  VU0_2R_FM<funct, 0b0111>;
+  def _xyzw : VU0_2R_Q_DESC<opstr#".xyzw">, VU0_2R_FM<funct, 0b1111>;
+  def : MipsInstAlias<!strconcat(opstr, " $fd, $fs, $q"),
+          (!cast<Instruction>(NAME#"_xyzw") VU0VFOpnd:$fd, VU0VFOpnd:$fs,
+                                             VU0QOpnd:$q), 1>;
+}
+
+multiclass VU0_2R_I_Arith<string opstr, bits<6> funct> {
+  def _x    : VU0_2R_I_DESC<opstr#".x">,    VU0_2R_FM<funct, 0b1000>;
+  def _y    : VU0_2R_I_DESC<opstr#".y">,    VU0_2R_FM<funct, 0b0100>;
+  def _z    : VU0_2R_I_DESC<opstr#".z">,    VU0_2R_FM<funct, 0b0010>;
+  def _w    : VU0_2R_I_DESC<opstr#".w">,    VU0_2R_FM<funct, 0b0001>;
+  def _xy   : VU0_2R_I_DESC<opstr#".xy">,   VU0_2R_FM<funct, 0b1100>;
+  def _xz   : VU0_2R_I_DESC<opstr#".xz">,   VU0_2R_FM<funct, 0b1010>;
+  def _xw   : VU0_2R_I_DESC<opstr#".xw">,   VU0_2R_FM<funct, 0b1001>;
+  def _yz   : VU0_2R_I_DESC<opstr#".yz">,   VU0_2R_FM<funct, 0b0110>;
+  def _yw   : VU0_2R_I_DESC<opstr#".yw">,   VU0_2R_FM<funct, 0b0101>;
+  def _zw   : VU0_2R_I_DESC<opstr#".zw">,   VU0_2R_FM<funct, 0b0011>;
+  def _xyz  : VU0_2R_I_DESC<opstr#".xyz">,  VU0_2R_FM<funct, 0b1110>;
+  def _xyw  : VU0_2R_I_DESC<opstr#".xyw">,  VU0_2R_FM<funct, 0b1101>;
+  def _xzw  : VU0_2R_I_DESC<opstr#".xzw">,  VU0_2R_FM<funct, 0b1011>;
+  def _yzw  : VU0_2R_I_DESC<opstr#".yzw">,  VU0_2R_FM<funct, 0b0111>;
+  def _xyzw : VU0_2R_I_DESC<opstr#".xyzw">, VU0_2R_FM<funct, 0b1111>;
+  def : MipsInstAlias<!strconcat(opstr, " $fd, $fs, $i"),
+          (!cast<Instruction>(NAME#"_xyzw") VU0VFOpnd:$fd, VU0VFOpnd:$fs,
+                                             VU0IOpnd:$i), 1>;
 }
 
 // opcodes/mips-opc.c funct values: vaddi=0x22, vaddq=0x20, vmaddi=0x23,
 // vmaddq=0x21, vmuli=0x1e, vmulq=0x1c, vmsubi=0x27, vmsubq=0x25,
 // vsubi=0x26, vsubq=0x24, vmaxi=0x1d, vminii=0x1f.
-defm VADDI : VU0_2R_Arith<"vaddi", 0x22>;
-defm VADDQ : VU0_2R_Arith<"vaddq", 0x20>;
-defm VMADDI : VU0_2R_Arith<"vmaddi", 0x23>;
-defm VMADDQ : VU0_2R_Arith<"vmaddq", 0x21>;
-defm VMULI : VU0_2R_Arith<"vmuli", 0x1e>;
-defm VMULQ : VU0_2R_Arith<"vmulq", 0x1c>;
-defm VMSUBI : VU0_2R_Arith<"vmsubi", 0x27>;
-defm VMSUBQ : VU0_2R_Arith<"vmsubq", 0x25>;
-defm VSUBI : VU0_2R_Arith<"vsubi", 0x26>;
-defm VSUBQ : VU0_2R_Arith<"vsubq", 0x24>;
-defm VMAXI : VU0_2R_Arith<"vmaxi", 0x1d>;
-defm VMINII : VU0_2R_Arith<"vminii", 0x1f>;
+defm VADDI : VU0_2R_I_Arith<"vaddi", 0x22>;
+defm VADDQ : VU0_2R_Q_Arith<"vaddq", 0x20>;
+defm VMADDI : VU0_2R_I_Arith<"vmaddi", 0x23>;
+defm VMADDQ : VU0_2R_Q_Arith<"vmaddq", 0x21>;
+defm VMULI : VU0_2R_I_Arith<"vmuli", 0x1e>;
+defm VMULQ : VU0_2R_Q_Arith<"vmulq", 0x1c>;
+defm VMSUBI : VU0_2R_I_Arith<"vmsubi", 0x27>;
+defm VMSUBQ : VU0_2R_Q_Arith<"vmsubq", 0x25>;
+defm VSUBI : VU0_2R_I_Arith<"vsubi", 0x26>;
+defm VSUBQ : VU0_2R_Q_Arith<"vsubq", 0x24>;
+defm VMAXI : VU0_2R_I_Arith<"vmaxi", 0x1d>;
+defm VMINII : VU0_2R_I_Arith<"vminii", 0x1f>;
 
 // ACC-writing arithmetic against the implicit $I/$Q registers (1 real VF
 // operand - fs only). Reuses VU0_ACC_FM with ft hardcoded via a dedicated
@@ -847,8 +944,8 @@ class VU0_1R_ACC_FM<bits<11> funct, bits<4> mask> : StdArch {
 }
 
 class VU0_1R_ACC_DESC<string opstr> :
-  InstSE<(outs), (ins VU0VFOpnd:$fs), !strconcat(opstr, "\t$fs"), [],
-         FrmOther> {
+  InstSE<(outs), (ins VU0ACCOpnd:$acc, VU0VFOpnd:$fs),
+         !strconcat(opstr, "\t$acc, $fs"), [], FrmOther> {
   let Predicates = [HasVU0];
   let DecoderNamespace = "Mips";
   let hasNoSchedulingInfo = 1;
@@ -871,6 +968,9 @@ multiclass VU0_1R_ACC_Arith<string opstr, bits<11> funct> {
   def _xzw  : VU0_1R_ACC_DESC<opstr#".xzw">,  VU0_1R_ACC_FM<funct, 0b1011>;
   def _yzw  : VU0_1R_ACC_DESC<opstr#".yzw">,  VU0_1R_ACC_FM<funct, 0b0111>;
   def _xyzw : VU0_1R_ACC_DESC<opstr#".xyzw">, VU0_1R_ACC_FM<funct, 0b1111>;
+  // See VU0_ACC_Arith's alias above - same bare-mnemonic shorthand.
+  def : MipsInstAlias<!strconcat(opstr, " $acc, $fs"),
+          (!cast<Instruction>(NAME#"_xyzw") VU0ACCOpnd:$acc, VU0VFOpnd:$fs), 1>;
 }
 
 // opcodes/mips-opc.c funct values (low 11 bits): vaddai=0x23e,
@@ -969,15 +1069,31 @@ def VISUB : VU0_INT_DESC<"visub">, VU0_INT_FM<0x31>;
 }
 
 // CFC2/CTC2: EE-side (not VU0-macro-mode-specific) COP2 control-register
-// transfer - same op/mfmt-slot shape as QMFC2/QMTC2 and DMFC2/DMTC2
-// (MFC3OP_FM<0x12, mfmt, 0>), mfmt=2 for CFCz / 6 for CTCz per the
-// standard MIPS COP move-instruction convention (already used unmodified
-// by this backend's own DMFC0/DMFC2 etc at mfmt=1/5). COP2Opnd (the
-// generic 32-entry COP2 control-register operand) already exists
-// upstream - reused as-is, no new register class needed.
+// transfer. Found broken while porting sdk-core's libgs (ResetPath.s uses
+// "cfc2 $a0, $28"/"ctc2 $a0, $28" against real EE clipping-flag control
+// register 28) - the original MFC3OP-based defs here mismatched real
+// syntax: MFC3OP is a 3-operand class (rt, rd, sel) built for COP0's
+// MFC0-style select field, but opcodes/mips-opc.c's cfc2/ctc2 ("t,g" -
+// cfc2=0x48400000, ctc2=0x48c00000, mask 0xffe007ff) are a plain
+// 2-operand CFCz/CTCz form with no sel field at all (low 11 bits always
+// zero). Own class instead, same op/mfmt-slot shape as MFC3OP_FM
+// (mfmt=2 for CFCz / 6 for CTCz, the standard MIPS COP move-instruction
+// convention) but without the extra sel operand. COP2Opnd (the generic
+// 32-entry COP2 control-register operand) already exists upstream.
+class CFC2OP<string asmstr, bits<5> mfmt, dag outs, dag ins> :
+  InstSE<outs, ins, !strconcat(asmstr, "\t$rt, $rd"), [], FrmFR>, StdArch {
+  bits<5> rt;
+  bits<5> rd;
+  let Inst{31-26} = 0x12;
+  let Inst{25-21} = mfmt;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-0}  = 0;
+}
+
 let Predicates = [HasVU0], hasNoSchedulingInfo = 1 in {
-def VU0_CFC2 : MFC3OP<"cfc2", GPR64Opnd, COP2Opnd>, MFC3OP_FM<0x12, 2, 0>;
-def VU0_CTC2 : MTC3OP<"ctc2", COP2Opnd, GPR64Opnd>, MFC3OP_FM<0x12, 6, 0>;
+def VU0_CFC2 : CFC2OP<"cfc2", 2, (outs GPR64Opnd:$rt), (ins COP2Opnd:$rd)>;
+def VU0_CTC2 : CFC2OP<"ctc2", 6, (outs), (ins GPR64Opnd:$rt, COP2Opnd:$rd)>;
 }
 
 // Unconditional-condition-flag COP2 branches (bc2t/bc2f/bc2tl/bc2fl).
@@ -2314,4 +2430,122 @@ let Predicates = [HasPS2CachePred], hasNoSchedulingInfo = 1,
     DecoderNamespace = "VU0" in {
 def P2_CACHE : CacheOp<"cache", mem>, CACHEOP_FM<0b101111>;
 def P2_PREF  : CacheOp<"pref", mem>, CACHEOP_FM<0b110011>;
+}
+
+//===----------------------------------------------------------------------===//
+// sync.l: found missing while porting sdk-core's core/dma (kernel.h's
+// EE_SYNCL() macro). Same shape as sync.p above - opcodes/mips-opc.c
+// tags it "I2" with a fully-fixed no-operand encoding (0x0000000f, the
+// same bits as plain "sync" with stype=0xf), so it's a real fixed-
+// encoding mnemonic alias, not a new instruction.
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1 in {
+def SYNC_L : InstSE<(outs), (ins), "sync.l", [], FrmOther>, StdArch {
+  let Inst = 0x0000000f;
+}
+}
+
+//===----------------------------------------------------------------------===//
+// bc0f/bc0t/bc0fl/bc0tl: found missing, same file (core/dma's polling
+// loop branches on COP0's condition bit). No upstream LLVM MIPS support
+// exists for any COP0 conditional branch. Same shape as VU0_BC2_DESC/
+// VU0_BC2_FM above (real, already-upstream BC2F/BC2T/BC2FL/BC2TL) - COP0
+// (major opcode 0x10) instead of COP2 (0x12), same BC sub-format
+// (bits 25-21 = 0b01000) and tf_nd encoding (00=f, 01=t, 10=fl, 11=tl).
+// opcodes/mips-opc.c: bc0f=0x41000000, bc0t=0x41010000, bc0fl=0x41020000,
+// bc0tl=0x41030000, mask 0xffff0000.
+class BC0_FM<bits<5> tf_nd> : StdArch {
+  bits<16> offset;
+
+  bits<32> Inst;
+
+  let Inst{31-26} = 0x10;
+  let Inst{25-21} = 0b01000;
+  let Inst{20-16} = tf_nd;
+  let Inst{15-0}  = offset;
+}
+
+class BC0_DESC<string opstr> :
+  InstSE<(outs), (ins brtarget:$offset), !strconcat(opstr, "\t$offset"),
+         [], FrmOther> {
+  let Predicates = [IsR5900Pred];
+  let DecoderNamespace = "VU0";
+  let hasNoSchedulingInfo = 1;
+  let isBranch = 1;
+  let isTerminator = 1;
+  let hasDelaySlot = 1;
+}
+
+let Predicates = [IsR5900Pred] in {
+def BC0F  : BC0_DESC<"bc0f">,  BC0_FM<0b00000>;
+def BC0T  : BC0_DESC<"bc0t">,  BC0_FM<0b00001>;
+def BC0FL : BC0_DESC<"bc0fl">, BC0_FM<0b00010>;
+def BC0TL : BC0_DESC<"bc0tl">, BC0_FM<0b00011>;
+}
+
+//===----------------------------------------------------------------------===//
+// slt/sltu 2-operand register form: found missing while porting sdk-core's
+// kernel.S (its cache-sync macros compare TLB entries via "sltu $2, $4",
+// real GNU as's 2-operand shorthand for "sltu $2, $2, $4"). Every other
+// ArithLogicR-based R-type ALU op (and/or/xor/add/addu/sub/subu) gets this
+// shorthand for free from upstream's own TwoOperandAliasConstraint on that
+// class (MipsInstrInfo.td) - SLT/SLTu use the separate SetCC_R class
+// instead, which never got the same constraint. A real, general upstream
+// gap (not R5900-specific), scoped here rather than touched on the shared
+// class to stay minimal.
+def : MipsInstAlias<"slt $rs, $rt",
+                     (SLT GPR32Opnd:$rs, GPR32Opnd:$rs, GPR32Opnd:$rt), 0>;
+def : MipsInstAlias<"sltu $rs, $rt",
+                     (SLTu GPR32Opnd:$rs, GPR32Opnd:$rs, GPR32Opnd:$rt), 0>;
+
+//===----------------------------------------------------------------------===//
+// EE hardware-breakpoint COP0 register moves: found missing while porting
+// sdk-core's eedebug/debug packages (ee_dbg_low.S, ee_exceptions.S,
+// hwbp.S - real hardware watchpoint setup/readback, mf/mt x bpc/iab/iabm/
+// dab/dabm/dvb/dvbm, 14 instructions total). opcodes/mips-opc.c: single
+// GPR operand each, mask 0xffe0ffff (only rt, bits20-16, varies) -
+// mfbpc=0x4000c000, mfiab=0x4000c002, mfiabm=0x4000c003, mfdab=0x4000c004,
+// mfdabm=0x4000c005, mfdvb=0x4000c006, mfdvbm=0x4000c007; mt-family is the
+// same low 16 bits with bits31-21 0x404 instead of mf's 0x400.
+class EEDBG_FM<bits<11> hi, bits<16> lo> : StdArch {
+  bits<5> rt;
+
+  bits<32> Inst;
+
+  let Inst{31-21} = hi;
+  let Inst{20-16} = rt;
+  let Inst{15-0}  = lo;
+}
+
+class EEDBG_DESC<string opstr> :
+  InstSE<(outs GPR32Opnd:$rt), (ins), !strconcat(opstr, "\t$rt"), [],
+         FrmOther> {
+  let Predicates = [IsR5900Pred];
+  let DecoderNamespace = "VU0";
+  let hasNoSchedulingInfo = 1;
+}
+
+class EEDBG_W_DESC<string opstr> :
+  InstSE<(outs), (ins GPR32Opnd:$rt), !strconcat(opstr, "\t$rt"), [],
+         FrmOther> {
+  let Predicates = [IsR5900Pred];
+  let DecoderNamespace = "VU0";
+  let hasNoSchedulingInfo = 1;
+}
+
+let Predicates = [IsR5900Pred] in {
+def MFBPC  : EEDBG_DESC<"mfbpc">,  EEDBG_FM<0x200, 0xc000>;
+def MFIAB  : EEDBG_DESC<"mfiab">,  EEDBG_FM<0x200, 0xc002>;
+def MFIABM : EEDBG_DESC<"mfiabm">, EEDBG_FM<0x200, 0xc003>;
+def MFDAB  : EEDBG_DESC<"mfdab">,  EEDBG_FM<0x200, 0xc004>;
+def MFDABM : EEDBG_DESC<"mfdabm">, EEDBG_FM<0x200, 0xc005>;
+def MFDVB  : EEDBG_DESC<"mfdvb">,  EEDBG_FM<0x200, 0xc006>;
+def MFDVBM : EEDBG_DESC<"mfdvbm">, EEDBG_FM<0x200, 0xc007>;
+
+def MTBPC  : EEDBG_W_DESC<"mtbpc">,  EEDBG_FM<0x204, 0xc000>;
+def MTIAB  : EEDBG_W_DESC<"mtiab">,  EEDBG_FM<0x204, 0xc002>;
+def MTIABM : EEDBG_W_DESC<"mtiabm">, EEDBG_FM<0x204, 0xc003>;
+def MTDAB  : EEDBG_W_DESC<"mtdab">,  EEDBG_FM<0x204, 0xc004>;
+def MTDABM : EEDBG_W_DESC<"mtdabm">, EEDBG_FM<0x204, 0xc005>;
+def MTDVB  : EEDBG_W_DESC<"mtdvb">,  EEDBG_FM<0x204, 0xc006>;
+def MTDVBM : EEDBG_W_DESC<"mtdvbm">, EEDBG_FM<0x204, 0xc007>;
 }

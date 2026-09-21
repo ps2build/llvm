@@ -433,6 +433,12 @@ class MipsAsmParser : public MCTargetAsmParser {
 
   int matchVU0VIRegisterName(StringRef Name);
 
+  int matchVU0ACCRegisterName(StringRef Name);
+
+  int matchVU0QRegisterName(StringRef Name);
+
+  int matchVU0IRegisterName(StringRef Name);
+
   MCRegister getReg(int RC, int RegNo);
 
   /// Returns the internal register number for the current AT. Also checks if
@@ -785,10 +791,42 @@ public:
     /// R5900 VU0 macro-mode 16-bit integer registers ($vi0-$vi15). Also
     /// named-only, not in RegKind_Numeric.
     RegKind_VU0VI = 4096,
+    /// R5900 VU0 macro-mode's implicit ACC/Q/I registers, spelled out as
+    /// an explicit operand by real GNU as on every instruction that
+    /// writes/reads them (e.g. "vmulaw $ACC, $vf4, $vf0") even though
+    /// each is a single fixed register with no encoding bits of its own -
+    /// found while porting sdk-core's math3d.c/vuhw.c. Named-only, single
+    /// member each, not in RegKind_Numeric.
+    RegKind_VU0ACC = 8192,
+    RegKind_VU0Q = 16384,
+    RegKind_VU0I = 32768,
+    /// vdiv/vrsqrt's fs/ft operands each carry a real, meaningful 2-bit
+    /// lane select that (unlike every other VU0 operand suffix in this
+    /// target, which is purely decorative - see matchVU0VFRegisterName)
+    /// only ever appears spelled as a trailing x/y/z/w letter on the
+    /// register name itself ("$vf0w"), never as a mnemonic dot suffix -
+    /// found while porting sdk-core's math3d.c. Layered on top of
+    /// RegKind_VU0VF (both bits set together) rather than replacing it,
+    /// so the same parsed operand still satisfies plain VU0VFOpnd too.
+    RegKind_VU0VFx = 65536,
+    RegKind_VU0VFy = 131072,
+    RegKind_VU0VFz = 262144,
+    RegKind_VU0VFw = 524288,
     /// Potentially any (e.g. $1)
+    ///
+    /// RegKind_VU0VF included: real GNU as accepts a plain numeric "$N"
+    /// as a synonym for the named "$vfN" wherever a VU0VF operand is
+    /// expected (confirmed against real as - "sqc2 $0, 0(v1)" assembles
+    /// identically to "sqc2 $vf0, 0(v1)") - found while porting
+    /// sdk-core's math3d.c. Safe to add unconditionally: which of these
+    /// member kinds actually applies is decided per-slot by whichever
+    /// instruction operand class ends up consuming the token, same as
+    /// every other RegKind_Numeric member already overlapping here
+    /// (e.g. COP2).
     RegKind_Numeric = RegKind_GPR | RegKind_FGR | RegKind_FCC | RegKind_MSA128 |
                       RegKind_MSACtrl | RegKind_COP2 | RegKind_ACC |
-                      RegKind_CCR | RegKind_HWRegs | RegKind_COP3 | RegKind_COP0
+                      RegKind_CCR | RegKind_HWRegs | RegKind_COP3 |
+                      RegKind_COP0 | RegKind_VU0VF
   };
 
 private:
@@ -957,6 +995,21 @@ private:
     assert(isRegIdx() && (RegIdx.Kind & RegKind_VU0VI) && "Invalid access!");
     unsigned ClassID = Mips::VU0VIRegClassID;
     return RegIdx.RegInfo->getRegClass(ClassID).getRegister(RegIdx.Index);
+  }
+
+  MCRegister getVU0ACCReg() const {
+    assert(isRegIdx() && (RegIdx.Kind & RegKind_VU0ACC) && "Invalid access!");
+    return RegIdx.RegInfo->getRegClass(Mips::VU0ACCRegClassID).getRegister(0);
+  }
+
+  MCRegister getVU0QReg() const {
+    assert(isRegIdx() && (RegIdx.Kind & RegKind_VU0Q) && "Invalid access!");
+    return RegIdx.RegInfo->getRegClass(Mips::VU0QRCRegClassID).getRegister(0);
+  }
+
+  MCRegister getVU0IReg() const {
+    assert(isRegIdx() && (RegIdx.Kind & RegKind_VU0I) && "Invalid access!");
+    return RegIdx.RegInfo->getRegClass(Mips::VU0IRCRegClassID).getRegister(0);
   }
 
   /// Coerce the register to MSACtrl and return the real register for the
@@ -1151,6 +1204,21 @@ public:
   void addVU0VFAsmRegOperands(MCInst &Inst, unsigned N) const {
     assert(N == 1 && "Invalid number of operands!");
     Inst.addOperand(MCOperand::createReg(getVU0VFReg()));
+  }
+
+  void addVU0ACCAsmRegOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    Inst.addOperand(MCOperand::createReg(getVU0ACCReg()));
+  }
+
+  void addVU0QAsmRegOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    Inst.addOperand(MCOperand::createReg(getVU0QReg()));
+  }
+
+  void addVU0IAsmRegOperands(MCInst &Inst, unsigned N) const {
+    assert(N == 1 && "Invalid number of operands!");
+    Inst.addOperand(MCOperand::createReg(getVU0IReg()));
   }
 
   void addVU0VIAsmRegOperands(MCInst &Inst, unsigned N) const {
@@ -1572,12 +1640,42 @@ public:
     return CreateReg(Index, Str, RegKind_MSACtrl, RegInfo, S, E, Parser);
   }
 
-  /// Create a register that is definitely a VU0VF.
+  /// Create a register that is definitely a VU0VF. ExtraKind, when
+  /// nonzero, is one of RegKind_VU0VFx/y/z/w - OR'd in alongside
+  /// RegKind_VU0VF (not replacing it) when the parsed token carried a
+  /// real, meaningful lane suffix (see RegKind_VU0VFx's own comment), so
+  /// the resulting operand still also satisfies plain VU0VFOpnd.
   /// This is typically only used for named registers such as $vf0.
   static std::unique_ptr<MipsOperand>
   createVU0VFReg(unsigned Index, StringRef Str, const MCRegisterInfo *RegInfo,
-                 SMLoc S, SMLoc E, MipsAsmParser &Parser) {
-    return CreateReg(Index, Str, RegKind_VU0VF, RegInfo, S, E, Parser);
+                 SMLoc S, SMLoc E, MipsAsmParser &Parser,
+                 unsigned ExtraKind = 0) {
+    return CreateReg(Index, Str, (RegKind)(RegKind_VU0VF | ExtraKind), RegInfo,
+                      S, E, Parser);
+  }
+
+  /// Create a register that is definitely the VU0 ACC register.
+  /// Only ever used for the named register $ACC.
+  static std::unique_ptr<MipsOperand>
+  createVU0ACCReg(unsigned Index, StringRef Str, const MCRegisterInfo *RegInfo,
+                  SMLoc S, SMLoc E, MipsAsmParser &Parser) {
+    return CreateReg(Index, Str, RegKind_VU0ACC, RegInfo, S, E, Parser);
+  }
+
+  /// Create a register that is definitely the VU0 Q register.
+  /// Only ever used for the named register $Q.
+  static std::unique_ptr<MipsOperand>
+  createVU0QReg(unsigned Index, StringRef Str, const MCRegisterInfo *RegInfo,
+                SMLoc S, SMLoc E, MipsAsmParser &Parser) {
+    return CreateReg(Index, Str, RegKind_VU0Q, RegInfo, S, E, Parser);
+  }
+
+  /// Create a register that is definitely the VU0 I register.
+  /// Only ever used for the named register $I.
+  static std::unique_ptr<MipsOperand>
+  createVU0IReg(unsigned Index, StringRef Str, const MCRegisterInfo *RegInfo,
+                SMLoc S, SMLoc E, MipsAsmParser &Parser) {
+    return CreateReg(Index, Str, RegKind_VU0I, RegInfo, S, E, Parser);
   }
 
   /// Create a register that is definitely a VU0VI.
@@ -1723,6 +1821,30 @@ public:
 
   bool isVU0VIAsmReg() const {
     return isRegIdx() && RegIdx.Kind & RegKind_VU0VI && RegIdx.Index <= 15;
+  }
+
+  bool isVU0ACCAsmReg() const {
+    return isRegIdx() && RegIdx.Kind & RegKind_VU0ACC;
+  }
+
+  bool isVU0QAsmReg() const { return isRegIdx() && RegIdx.Kind & RegKind_VU0Q; }
+
+  bool isVU0IAsmReg() const { return isRegIdx() && RegIdx.Kind & RegKind_VU0I; }
+
+  bool isVU0VFxAsmReg() const {
+    return isRegIdx() && RegIdx.Kind & RegKind_VU0VFx && RegIdx.Index <= 31;
+  }
+
+  bool isVU0VFyAsmReg() const {
+    return isRegIdx() && RegIdx.Kind & RegKind_VU0VFy && RegIdx.Index <= 31;
+  }
+
+  bool isVU0VFzAsmReg() const {
+    return isRegIdx() && RegIdx.Kind & RegKind_VU0VFz && RegIdx.Index <= 31;
+  }
+
+  bool isVU0VFwAsmReg() const {
+    return isRegIdx() && RegIdx.Kind & RegKind_VU0VFw && RegIdx.Index <= 31;
   }
 
   /// getStartLoc - Get the location of the first token of this operand.
@@ -6373,8 +6495,20 @@ int MipsAsmParser::matchMSA128CtrlRegisterName(StringRef Name) {
 int MipsAsmParser::matchVU0VFRegisterName(StringRef Name) {
   unsigned IntVal;
 
-  if (Name.front() != 'v' || Name.size() < 3 || Name[1] != 'f' ||
-      Name.drop_front(2).getAsInteger(10, IntVal))
+  if (Name.front() != 'v' || Name.size() < 3 || Name[1] != 'f')
+    return -1;
+
+  // Real GNU as accepts (and its own disassembler emits) an optional
+  // trailing x/y/z/w broadcast-component letter on a VU0 vf register
+  // name (e.g. "vf1x") - purely decorative, ignored either way, since
+  // the actual broadcast component is always encoded in the instruction
+  // mnemonic itself, never the operand. Found while porting sdk-core's
+  // vuhw.c ("vmulx.x $vf10, $vf10, $vf1x").
+  StringRef Digits = Name.drop_front(2);
+  if (!Digits.empty() && StringRef("xyzw").contains(Digits.back()))
+    Digits = Digits.drop_back(1);
+
+  if (Digits.empty() || Digits.getAsInteger(10, IntVal))
     return -1;
 
   if (IntVal > 31)
@@ -6394,6 +6528,21 @@ int MipsAsmParser::matchVU0VIRegisterName(StringRef Name) {
     return -1;
 
   return IntVal;
+}
+
+// Single fixed register each, matched by exact literal name only - see
+// RegKind_VU0ACC's comment for why these need to be real parseable
+// operands at all.
+int MipsAsmParser::matchVU0ACCRegisterName(StringRef Name) {
+  return Name == "ACC" ? 0 : -1;
+}
+
+int MipsAsmParser::matchVU0QRegisterName(StringRef Name) {
+  return Name == "Q" ? 0 : -1;
+}
+
+int MipsAsmParser::matchVU0IRegisterName(StringRef Name) {
+  return Name == "I" ? 0 : -1;
 }
 
 bool MipsAsmParser::canUseATReg() {
@@ -6802,15 +6951,47 @@ ParseStatus MipsAsmParser::matchAnyRegisterNameWithoutDollar(
 
   Index = matchVU0VFRegisterName(Identifier);
   if (Index != -1) {
+    unsigned LaneKind = 0;
+    switch (Identifier.empty() ? 0 : Identifier.back()) {
+    case 'x': LaneKind = MipsOperand::RegKind_VU0VFx; break;
+    case 'y': LaneKind = MipsOperand::RegKind_VU0VFy; break;
+    case 'z': LaneKind = MipsOperand::RegKind_VU0VFz; break;
+    case 'w': LaneKind = MipsOperand::RegKind_VU0VFw; break;
+    default: break;
+    }
     Operands.push_back(MipsOperand::createVU0VFReg(
         Index, Identifier, getContext().getRegisterInfo(), S,
-        getLexer().getLoc(), *this));
+        getLexer().getLoc(), *this, LaneKind));
     return ParseStatus::Success;
   }
 
   Index = matchVU0VIRegisterName(Identifier);
   if (Index != -1) {
     Operands.push_back(MipsOperand::createVU0VIReg(
+        Index, Identifier, getContext().getRegisterInfo(), S,
+        getLexer().getLoc(), *this));
+    return ParseStatus::Success;
+  }
+
+  Index = matchVU0ACCRegisterName(Identifier);
+  if (Index != -1) {
+    Operands.push_back(MipsOperand::createVU0ACCReg(
+        Index, Identifier, getContext().getRegisterInfo(), S,
+        getLexer().getLoc(), *this));
+    return ParseStatus::Success;
+  }
+
+  Index = matchVU0QRegisterName(Identifier);
+  if (Index != -1) {
+    Operands.push_back(MipsOperand::createVU0QReg(
+        Index, Identifier, getContext().getRegisterInfo(), S,
+        getLexer().getLoc(), *this));
+    return ParseStatus::Success;
+  }
+
+  Index = matchVU0IRegisterName(Identifier);
+  if (Index != -1) {
+    Operands.push_back(MipsOperand::createVU0IReg(
         Index, Identifier, getContext().getRegisterInfo(), S,
         getLexer().getLoc(), *this));
     return ParseStatus::Success;

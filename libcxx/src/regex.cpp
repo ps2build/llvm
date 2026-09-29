@@ -306,22 +306,30 @@ struct classnames {
   regex_traits<char>::char_class_type mask_;
 };
 
+// newlib's real ctype_base::mask values carry the sign bit on some
+// entries (e.g. blank/print) - regex_traits<char>::char_class_type is
+// unsigned short, so narrowing them implicitly is ill-formed under
+// -Wc++11-narrowing even though the bit pattern itself is fine.
+#define _LIBCPP_MASK(x) static_cast<regex_traits<char>::char_class_type>(x)
+
 const classnames ClassNames[] = {
-    {"alnum", ctype_base::alnum},
-    {"alpha", ctype_base::alpha},
-    {"blank", ctype_base::blank},
-    {"cntrl", ctype_base::cntrl},
-    {"d", ctype_base::digit},
-    {"digit", ctype_base::digit},
-    {"graph", ctype_base::graph},
-    {"lower", ctype_base::lower},
-    {"print", ctype_base::print},
-    {"punct", ctype_base::punct},
-    {"s", ctype_base::space},
-    {"space", ctype_base::space},
-    {"upper", ctype_base::upper},
+    {"alnum", _LIBCPP_MASK(ctype_base::alnum)},
+    {"alpha", _LIBCPP_MASK(ctype_base::alpha)},
+    {"blank", _LIBCPP_MASK(ctype_base::blank)},
+    {"cntrl", _LIBCPP_MASK(ctype_base::cntrl)},
+    {"d", _LIBCPP_MASK(ctype_base::digit)},
+    {"digit", _LIBCPP_MASK(ctype_base::digit)},
+    {"graph", _LIBCPP_MASK(ctype_base::graph)},
+    {"lower", _LIBCPP_MASK(ctype_base::lower)},
+    {"print", _LIBCPP_MASK(ctype_base::print)},
+    {"punct", _LIBCPP_MASK(ctype_base::punct)},
+    {"s", _LIBCPP_MASK(ctype_base::space)},
+    {"space", _LIBCPP_MASK(ctype_base::space)},
+    {"upper", _LIBCPP_MASK(ctype_base::upper)},
     {"w", regex_traits<char>::__regex_word},
-    {"xdigit", ctype_base::xdigit}};
+    {"xdigit", _LIBCPP_MASK(ctype_base::xdigit)}};
+
+#undef _LIBCPP_MASK
 
 struct use_strcmp {
   bool operator()(const collationnames& x, const char* y) const { return strcmp(x.elem_, y) < 0; }

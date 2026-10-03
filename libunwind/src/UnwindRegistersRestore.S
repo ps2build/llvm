@@ -1125,7 +1125,11 @@ DEFINE_LIBUNWIND_FUNCTION(_ZN9libunwind21Registers_mips_newabi6jumptoEv)
   .set nomacro
 #ifdef __mips_hard_float
   .irp i,FROM_0_TO_31
+#ifdef _MIPS_ARCH_R5900
+    lwc1 $f\i, (280+8*\i)($4)
+#else
     ldc1 $f\i, (280+8*\i)($4)
+#endif
   .endr
 #endif
 #if __mips_isa_rev < 6

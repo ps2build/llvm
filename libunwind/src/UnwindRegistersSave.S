@@ -313,7 +313,11 @@ DEFINE_LIBUNWIND_FUNCTION(__unw_getcontext)
 #endif
 #ifdef __mips_hard_float
   .irp i,FROM_0_TO_31
+#ifdef _MIPS_ARCH_R5900
+    swc1 $f\i, (280+8*\i)($4)
+#else
     sdc1 $f\i, (280+8*\i)($4)
+#endif
   .endr
 #endif
   jr	$31

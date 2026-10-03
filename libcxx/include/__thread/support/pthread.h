@@ -47,6 +47,13 @@ using __libcpp_timespec_t _LIBCPP_NODEBUG = ::timespec;
 typedef pthread_mutex_t __libcpp_mutex_t;
 #define _LIBCPP_MUTEX_INITIALIZER PTHREAD_MUTEX_INITIALIZER
 
+// pthread-embedded handles are pointers, so their initializers are not constant expressions.
+#if defined(__ps2sdk__)
+#  define _LIBCPP_PTHREAD_CONSTINIT
+#else
+#  define _LIBCPP_PTHREAD_CONSTINIT constinit
+#endif
+
 typedef pthread_mutex_t __libcpp_recursive_mutex_t;
 
 inline _LIBCPP_HIDE_FROM_ABI int __libcpp_recursive_mutex_init(__libcpp_recursive_mutex_t* __m) {

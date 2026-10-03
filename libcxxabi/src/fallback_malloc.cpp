@@ -35,7 +35,7 @@ namespace {
 
 // When POSIX threads are not available, make the mutex operations a nop
 #ifndef _LIBCXXABI_HAS_NO_THREADS
-static constinit std::__libcpp_mutex_t heap_mutex = _LIBCPP_MUTEX_INITIALIZER;
+static _LIBCPP_PTHREAD_CONSTINIT std::__libcpp_mutex_t heap_mutex = _LIBCPP_MUTEX_INITIALIZER;
 #else
 static constinit void* heap_mutex = 0;
 #endif

@@ -102,7 +102,7 @@ const void* __shared_weak_count::__get_deleter(const type_info&) const noexcept 
 #if _LIBCPP_HAS_THREADS
 
 static constexpr std::size_t __sp_mut_count                = 32;
-static constinit __libcpp_mutex_t mut_back[__sp_mut_count] = {
+static _LIBCPP_PTHREAD_CONSTINIT __libcpp_mutex_t mut_back[__sp_mut_count] = {
     _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER,
     _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER,
     _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER, _LIBCPP_MUTEX_INITIALIZER,

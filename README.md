@@ -1,3 +1,5 @@
+> ⚠️ **Work in progress.** This is the PS2 fork of LLVM (Emotion Engine R5900 and IOP R3000A support, VU0/VU1 and MMI instructions), used by the experimental toolchain in [ps2/llvm-toolchain](https://git.techwritescode.dev/ps2/llvm-toolchain). It changes often, has gaps, and is not ready for production use. The patched branch is `r5900-ee`; see `UPDATING.md`. ⚠️
+
 # The LLVM Compiler Infrastructure
 
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/llvm/llvm-project/badge)](https://securityscorecards.dev/viewer/?uri=github.com/llvm/llvm-project)

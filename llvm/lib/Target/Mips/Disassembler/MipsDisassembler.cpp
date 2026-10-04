@@ -253,6 +253,16 @@ static DecodeStatus DecodeVU0VFRegisterClass(MCInst &Inst, unsigned RegNo,
   return MCDisassembler::Success;
 }
 
+// The $0 placeholder in R5900 div1/divu1.
+static DecodeStatus DecodeGPR32ZERORegisterClass(MCInst &Inst, unsigned RegNo,
+                                                 uint64_t Address,
+                                                 const MCDisassembler *Decoder) {
+  if (RegNo != 0)
+    return MCDisassembler::Fail;
+  Inst.addOperand(MCOperand::createReg(Mips::ZERO));
+  return MCDisassembler::Success;
+}
+
 static DecodeStatus DecodeVU0VIRegisterClass(MCInst &Inst, unsigned RegNo,
                                              uint64_t Address,
                                              const MCDisassembler *Decoder) {

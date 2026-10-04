@@ -2549,3 +2549,74 @@ def MTDABM : EEDBG_W_DESC<"mtdabm">, EEDBG_FM<0x204, 0xc005>;
 def MTDVB  : EEDBG_W_DESC<"mtdvb">,  EEDBG_FM<0x204, 0xc006>;
 def MTDVBM : EEDBG_W_DESC<"mtdvbm">, EEDBG_FM<0x204, 0xc007>;
 }
+
+//===----------------------------------------------------------------------===//
+// R5900 multiply/divide forms with a destination register or a literal $0.
+// mips-opc.c lists "d,s,t" variants of mult/multu/madd/maddu and of the
+// pipeline-1 versions that also write a GPR, plain two-operand madd/maddu
+// (the R5900 has no generic MIPS32 ISA bit, so the base definitions never
+// apply), and div1/divu1 spelled "z,s,t" with a literal $0 first operand.
+//===----------------------------------------------------------------------===//
+class R5900_RSRT_FM<bits<6> major, bits<6> funct> : StdArch {
+  bits<5> rs;
+  bits<5> rt;
+  bits<32> Inst;
+  let Inst{31-26} = major;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = 0;
+  let Inst{10-6} = 0;
+  let Inst{5-0} = funct;
+}
+
+class R5900_RDRSRT_FM<bits<6> major, bits<6> funct> : StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  bits<32> Inst;
+  let Inst{31-26} = major;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0;
+  let Inst{5-0} = funct;
+}
+
+class R5900_ZRSRT_FM<bits<6> major, bits<6> funct> : StdArch {
+  bits<5> z;
+  bits<5> rs;
+  bits<5> rt;
+  bits<32> Inst;
+  let Inst{31-26} = major;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = z;
+  let Inst{10-6} = 0;
+  let Inst{5-0} = funct;
+}
+
+class R5900_MULDIV2<string opstr> :
+  InstSE<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+         !strconcat(opstr, "\t$rs, $rt"), [], FrmOther>;
+class R5900_MULDIV3<string opstr> :
+  InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
+         !strconcat(opstr, "\t$rd, $rs, $rt"), [], FrmOther>;
+class R5900_DIVZ<string opstr> :
+  InstSE<(outs), (ins GPR32ZeroOpnd:$z, GPR64Opnd:$rs, GPR64Opnd:$rt),
+         !strconcat(opstr, "\t$z, $rs, $rt"), [], FrmOther>;
+
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1,
+    DecoderNamespace = "VU0" in {
+def P_MADD    : R5900_MULDIV2<"madd">,   R5900_RSRT_FM<0x1c, 0x00>;
+def P_MADDU   : R5900_MULDIV2<"maddu">,  R5900_RSRT_FM<0x1c, 0x01>;
+def P_MADD3   : R5900_MULDIV3<"madd">,   R5900_RDRSRT_FM<0x1c, 0x00>;
+def P_MADDU3  : R5900_MULDIV3<"maddu">,  R5900_RDRSRT_FM<0x1c, 0x01>;
+def P_MADD1_3 : R5900_MULDIV3<"madd1">,  R5900_RDRSRT_FM<0x1c, 0x20>;
+def P_MADDU1_3: R5900_MULDIV3<"maddu1">, R5900_RDRSRT_FM<0x1c, 0x21>;
+def P_MULT1_3 : R5900_MULDIV3<"mult1">,  R5900_RDRSRT_FM<0x1c, 0x18>;
+def P_MULTU1_3: R5900_MULDIV3<"multu1">, R5900_RDRSRT_FM<0x1c, 0x19>;
+def P_MULT3   : R5900_MULDIV3<"mult">,   R5900_RDRSRT_FM<0x00, 0x18>;
+def P_MULTU3  : R5900_MULDIV3<"multu">,  R5900_RDRSRT_FM<0x00, 0x19>;
+def P_DIV1_Z  : R5900_DIVZ<"div1">,      R5900_ZRSRT_FM<0x1c, 0x1a>;
+def P_DIVU1_Z : R5900_DIVZ<"divu1">,     R5900_ZRSRT_FM<0x1c, 0x1b>;
+}

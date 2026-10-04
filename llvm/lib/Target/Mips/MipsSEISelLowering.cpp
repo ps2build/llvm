@@ -349,6 +349,9 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
     setCondCodeAction(ISD::SETONE, MVT::f32, Expand);
     setCondCodeAction(ISD::SETUEQ, MVT::f32, Expand);
     setCondCodeAction(ISD::SETNE, MVT::f32, Expand);
+
+    setOperationAction(ISD::FMAXNUM, MVT::f32, Legal);
+    setOperationAction(ISD::FMINNUM, MVT::f32, Legal);
   }
 
   computeRegisterProperties(Subtarget.getRegisterInfo());

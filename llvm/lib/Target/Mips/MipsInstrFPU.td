@@ -1032,6 +1032,60 @@ let Predicates = [IsR5900] in {
 def : MipsPat<(MipsTruncIntFP FGR32Opnd:$src),
               (TRUNC_W_S FGR32Opnd:$src)>, ISA_MIPS1;
 
+//===----------------------------------------------------------------------===//
+// R5900 COP1 extensions: max/min, three-operand rsqrt, and the accumulator
+// (ACC) multiply-add family. The ACC forms are assembler/disassembler only.
+//===----------------------------------------------------------------------===//
+class R5900_FPU_ACC2<string opstr> :
+  InstSE<(outs), (ins FGR32Opnd:$fs, FGR32Opnd:$ft),
+         !strconcat(opstr, "	$fs, $ft"), [], FrmFR, opstr>,
+  HARDFLOAT {
+  let hasSideEffects = 1;
+}
+
+class R5900_ACC_FM<bits<6> funct> : StdArch {
+  bits<5> fs;
+  bits<5> ft;
+
+  bits<32> Inst;
+
+  let Inst{31-26} = 0x11;
+  let Inst{25-21} = 16;
+  let Inst{20-16} = ft;
+  let Inst{15-11} = fs;
+  let Inst{10-6}  = 0;
+  let Inst{5-0}   = funct;
+}
+
+let Predicates = [IsR5900], hasNoSchedulingInfo = 1, mayRaiseFPException = 1, Uses = [FCR31] in {
+  def MAX_S_R5900 : MMRel, ADDS_FT<"max.s", FGR32Opnd, 1, fmaxnum>,
+                    ADDS_FM<0x28, 16>;
+  def MIN_S_R5900 : MMRel, ADDS_FT<"min.s", FGR32Opnd, 1, fminnum>,
+                    ADDS_FM<0x29, 16>;
+  def RSQRT_S_R5900 : InstSE<(outs FGR32Opnd:$fd),
+                             (ins FGR32Opnd:$fs, FGR32Opnd:$ft),
+                             "rsqrt.s	$fd, $fs, $ft",
+                             [(set FGR32Opnd:$fd,
+                               (fdiv FGR32Opnd:$fs, (fsqrt FGR32Opnd:$ft)))],
+                             FrmFR, "rsqrt.s">,
+                      HARDFLOAT, ADDS_FM<0x16, 16>;
+  def ADDA_S_R5900 : R5900_FPU_ACC2<"adda.s">, R5900_ACC_FM<0x18>;
+  def SUBA_S_R5900 : R5900_FPU_ACC2<"suba.s">, R5900_ACC_FM<0x19>;
+  def MULA_S_R5900 : R5900_FPU_ACC2<"mula.s">, R5900_ACC_FM<0x1a>;
+  def MADDA_S_R5900 : R5900_FPU_ACC2<"madda.s">, R5900_ACC_FM<0x1e>;
+  def MSUBA_S_R5900 : R5900_FPU_ACC2<"msuba.s">, R5900_ACC_FM<0x1f>;
+  let hasSideEffects = 1 in {
+    def MADD_S_R5900 : InstSE<(outs FGR32Opnd:$fd),
+                              (ins FGR32Opnd:$fs, FGR32Opnd:$ft),
+                              "madd.s	$fd, $fs, $ft", [], FrmFR, "madd.s">,
+                       HARDFLOAT, ADDS_FM<0x1c, 16>;
+    def MSUB_S_R5900 : InstSE<(outs FGR32Opnd:$fd),
+                              (ins FGR32Opnd:$fs, FGR32Opnd:$ft),
+                              "msub.s	$fd, $fs, $ft", [], FrmFR, "msub.s">,
+                       HARDFLOAT, ADDS_FM<0x1d, 16>;
+  }
+}
+
 def : MipsPat<(MipsMTC1_D64 GPR32Opnd:$src),
               (MTC1_D64 GPR32Opnd:$src)>, ISA_MIPS1, FGR_64;
 

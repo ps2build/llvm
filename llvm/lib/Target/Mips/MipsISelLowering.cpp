@@ -522,12 +522,18 @@ static SDValue performDivRemCombine(SDNode *N, SelectionDAG &DAG,
 
 /// The R5900 FPU implements only C.F, C.EQ, C.LT and C.LE. Rewrite a condition
 /// onto those, or their inversions (which the branch/move users invert), by
-/// swapping operands where needed. ONE, UEQ, ORD and UNO have no single-compare
-/// form and are expanded before they get here.
+/// swapping operands where needed. The FPU has no NaNs, so the unordered forms
+/// of equality and inequality are the ordered ones, and ordered/unordered
+/// tests are constant true/false.
 static ISD::CondCode canonicalizeR5900FPCond(SDValue &LHS, SDValue &RHS,
                                              ISD::CondCode CC) {
   switch (CC) {
   default: return CC;
+  case ISD::SETUEQ: return ISD::SETOEQ;
+  case ISD::SETNE:
+  case ISD::SETONE: return ISD::SETUNE;
+  case ISD::SETO:   return ISD::SETTRUE;
+  case ISD::SETUO:  return ISD::SETFALSE;
   case ISD::SETULT: std::swap(LHS, RHS); return ISD::SETUGT;
   case ISD::SETULE: std::swap(LHS, RHS); return ISD::SETUGE;
   case ISD::SETOGT: std::swap(LHS, RHS); return ISD::SETOLT;
@@ -540,6 +546,8 @@ static ISD::CondCode canonicalizeR5900FPCond(SDValue &LHS, SDValue &RHS,
 static Mips::CondCode condCodeToFCC(ISD::CondCode CC) {
   switch (CC) {
   default: llvm_unreachable("Unknown fp condition code!");
+  case ISD::SETFALSE: return Mips::FCOND_F;
+  case ISD::SETTRUE: return Mips::FCOND_T;
   case ISD::SETEQ:
   case ISD::SETOEQ: return Mips::FCOND_OEQ;
   case ISD::SETUNE: return Mips::FCOND_UNE;
@@ -2652,6 +2660,10 @@ SDValue MipsTargetLowering::lowerFABS64(SDValue Op, SelectionDAG &DAG,
 }
 
 SDValue MipsTargetLowering::lowerFABS(SDValue Op, SelectionDAG &DAG) const {
+  // The R5900 FPU has abs.s and no NaNs for it to mishandle.
+  if (Subtarget.isR5900() && Op.getValueType() == MVT::f32)
+    return Op;
+
   if ((ABI.IsN32() || ABI.IsN64()) && (Op.getValueType() == MVT::f64))
     return lowerFABS64(Op, DAG, Subtarget.hasExtractInsert());
 

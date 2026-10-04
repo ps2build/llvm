@@ -23,7 +23,7 @@ mul.s   $f9, $f6, $f7
 # CHECK: div.s   $f9, $f6, $f7      # encoding: [0x43,0x32,0x07,0x46]
 div.s   $f9, $f6, $f7
 
-# CHECK: sqrt.s  $f6, $f7           # encoding: [0x84,0x39,0x00,0x46]
+# CHECK: sqrt.s  $f6, $f7           # encoding: [0x84,0x01,0x07,0x46]
 sqrt.s  $f6, $f7
 
 # CHECK: neg.s   $f6, $f7           # encoding: [0x87,0x39,0x00,0x46]

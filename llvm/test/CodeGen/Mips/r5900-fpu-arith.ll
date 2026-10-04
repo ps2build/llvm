@@ -58,3 +58,12 @@ define float @test_fmul_nnan_ninf(float %a, float %b) {
 }
 
 declare float @llvm.sqrt.f32(float)
+
+define float @test_fabs(float %a) {
+; CHECK-LABEL: test_fabs:
+; CHECK: abs.s
+  %r = call float @llvm.fabs.f32(float %a)
+  ret float %r
+}
+
+declare float @llvm.fabs.f32(float)

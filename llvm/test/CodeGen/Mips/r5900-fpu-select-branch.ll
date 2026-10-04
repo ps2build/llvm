@@ -45,3 +45,42 @@ t:
 f:
   ret i32 0
 }
+
+; Ordered/unordered tests are constant on a FPU without NaNs and must not use
+; c.un or c.ueq, which the R5900 does not implement.
+define float @test_select_self_ge(float %a, float %b) {
+; CHECK-LABEL: test_select_self_ge:
+; CHECK-NOT: c.un
+; CHECK-NOT: c.ueq
+; CHECK: jr
+  %c = fcmp oge float %b, %b
+  %r = select i1 %c, float %a, float %b
+  ret float %r
+}
+
+define float @test_select_uno(float %a, float %b) {
+; CHECK-LABEL: test_select_uno:
+; CHECK-NOT: c.un
+; CHECK: jr
+  %c = fcmp uno float %a, %b
+  %r = select i1 %c, float %a, float %b
+  ret float %r
+}
+
+define float @test_select_one(float %a, float %b, float %x, float %y) {
+; CHECK-LABEL: test_select_one:
+; CHECK-NOT: c.ueq
+; CHECK: c.eq.s
+  %c = fcmp one float %a, %b
+  %r = select i1 %c, float %x, float %y
+  ret float %r
+}
+
+define float @test_select_ueq(float %a, float %b, float %x, float %y) {
+; CHECK-LABEL: test_select_ueq:
+; CHECK-NOT: c.ueq
+; CHECK: c.eq.s
+  %c = fcmp ueq float %a, %b
+  %r = select i1 %c, float %x, float %y
+  ret float %r
+}

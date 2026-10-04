@@ -2160,6 +2160,14 @@ DecodeStatus MipsDisassembler::getInstruction(MCInst &Instr, uint64_t &Size,
       return Result;
   }
 
+  if (STI.hasFeature(Mips::FeatureR5900)) {
+    LLVM_DEBUG(dbgs() << "Trying R5900 table (32-bit opcodes):\n");
+    Result =
+        decodeInstruction(DecoderTableR590032, Instr, Insn, Address, this, STI);
+    if (Result != MCDisassembler::Fail)
+      return Result;
+  }
+
   LLVM_DEBUG(dbgs() << "Trying Mips table (32-bit opcodes):\n");
   // Calling the auto-generated decoder function.
   Result =

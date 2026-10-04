@@ -147,7 +147,8 @@ multiclass ADDS_M<string opstr, bit IsComm,
 
 class ABSS_FT_PatFrag<SDPatternOperator OpNode>:
   PatFrag<(ops node:$fs), (OpNode node:$fs),
-          [{ return Subtarget->inAbs2008Mode() || N->getFlags().hasNoNaNs(); }]>;
+          [{ return Subtarget->inAbs2008Mode() || Subtarget->isR5900() ||
+                  N->getFlags().hasNoNaNs(); }]>;
 class ABSS_FT<string opstr, RegisterOperand DstRC, RegisterOperand SrcRC,
               SDPatternOperator OpNode= null_frag> :
   InstSE<(outs DstRC:$fd), (ins SrcRC:$fs), !strconcat(opstr, "\t$fd, $fs"),
@@ -592,10 +593,34 @@ let AdditionalPredicates = [NotInMicroMips] in {
 }
 
 let AdditionalPredicates = [NotInMicroMips], mayRaiseFPException = 1, Uses = [FCR31] in {
+  let AdditionalPredicates = [NotInMicroMips, NotR5900] in
   def FSQRT_S : MMRel, StdMMR6Rel, ABSS_FT<"sqrt.s", FGR32Opnd, FGR32Opnd,
                 any_fsqrt>, ABSS_FM<0x4, 16>, ISA_MIPS2;
   defm FSQRT : ABSS_M<"sqrt.d", any_fsqrt>, ABSS_FM<0x4, 17>, ISA_MIPS2;
 }
+
+// The R5900 reads the operand of sqrt.s from the ft field, not fs.
+class SQRTS_R5900_FM : StdArch {
+  bits<5> fd;
+  bits<5> ft;
+
+  bits<32> Inst;
+
+  let Inst{31-26} = 0x11;
+  let Inst{25-21} = 16;
+  let Inst{20-16} = ft;
+  let Inst{15-11} = 0;
+  let Inst{10-6}  = fd;
+  let Inst{5-0}   = 0x4;
+}
+
+let Predicates = [IsR5900], hasNoSchedulingInfo = 1, mayRaiseFPException = 1,
+    Uses = [FCR31], DecoderNamespace = "R5900" in
+  def FSQRT_S_R5900 : InstSE<(outs FGR32Opnd:$fd), (ins FGR32Opnd:$ft),
+                             "sqrt.s	$fd, $ft",
+                             [(set FGR32Opnd:$fd, (any_fsqrt FGR32Opnd:$ft))],
+                             FrmFR, "sqrt.s">,
+                      HARDFLOAT, NeverHasSideEffects, SQRTS_R5900_FM;
 
 // The odd-numbered registers are only referenced when doing loads,
 // stores, and moves between floating-point and integer registers.
@@ -1036,6 +1061,8 @@ def : MipsPat<(MipsTruncIntFP FGR32Opnd:$src),
 // R5900 COP1 extensions: max/min, three-operand rsqrt, and the accumulator
 // (ACC) multiply-add family. The ACC forms are assembler/disassembler only.
 //===----------------------------------------------------------------------===//
+def fsqrt_one_use : PatFrag<(ops node:$x), (fsqrt node:$x), [{ return N->hasOneUse(); }]>;
+
 class R5900_FPU_ACC2<string opstr> :
   InstSE<(outs), (ins FGR32Opnd:$fs, FGR32Opnd:$ft),
          !strconcat(opstr, "	$fs, $ft"), [], FrmFR, opstr>,
@@ -1066,7 +1093,8 @@ let Predicates = [IsR5900], hasNoSchedulingInfo = 1, mayRaiseFPException = 1, Us
                              (ins FGR32Opnd:$fs, FGR32Opnd:$ft),
                              "rsqrt.s	$fd, $fs, $ft",
                              [(set FGR32Opnd:$fd,
-                               (fdiv FGR32Opnd:$fs, (fsqrt FGR32Opnd:$ft)))],
+                               (fdiv FGR32Opnd:$fs,
+                                (fsqrt_one_use FGR32Opnd:$ft)))],
                              FrmFR, "rsqrt.s">,
                       HARDFLOAT, ADDS_FM<0x16, 16>;
   def ADDA_S_R5900 : R5900_FPU_ACC2<"adda.s">, R5900_ACC_FM<0x18>;
@@ -1085,6 +1113,10 @@ let Predicates = [IsR5900], hasNoSchedulingInfo = 1, mayRaiseFPException = 1, Us
                        HARDFLOAT, ADDS_FM<0x1d, 16>;
   }
 }
+
+let Predicates = [IsR5900] in
+def : MipsPat<(fdiv FGR32Opnd:$fs, (fneg (fsqrt_one_use FGR32Opnd:$ft))),
+              (RSQRT_S_R5900 (FNEG_S FGR32Opnd:$fs), FGR32Opnd:$ft)>;
 
 def : MipsPat<(MipsMTC1_D64 GPR32Opnd:$src),
               (MTC1_D64 GPR32Opnd:$src)>, ISA_MIPS1, FGR_64;

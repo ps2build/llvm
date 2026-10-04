@@ -9,9 +9,10 @@
 // Scheduling model for the R5900 (PlayStation 2 Emotion Engine core): in-order,
 // two integer pipes, one load/store unit, one branch unit and one FPU.
 //
-// The numbers are the latencies and unit occupancies used by the R5900
-// pipeline description in the ps2dev GCC fork (gcc/config/mips/5900.md). They
-// are not checked against the EE Core User's Manual or hardware. Only the
+// The numbers were measured on a console with ps2-latency-bench (COP0 Count,
+// dependent chains for latency, independent groups for unit occupancy, and
+// producer/consumer pairs for forwarding). Where the benchmark did not cover
+// an operation the figure comes from the ps2dev GCC fork's 5900.md. Only the
 // instructions the compiler selects are listed; the model is incomplete on
 // purpose, and anything unlisted gets the default one-cycle latency.
 //
@@ -21,7 +22,7 @@ def MipsR5900Model : SchedMachineModel {
   int IssueWidth = 2;
   int MicroOpBufferSize = 0;
 
-  int LoadLatency = 1;
+  int LoadLatency = 2;
   int MispredictPenalty = 1;
 
   int HighLatency = 37;
@@ -42,20 +43,24 @@ def R5900FPU : ProcResource<1>;
 
 def R5900WriteALU : SchedWriteRes<[R5900ALU]>;
 def R5900WriteALU0 : SchedWriteRes<[R5900ALU0]>;
-def R5900WriteLS : SchedWriteRes<[R5900LS]>;
+def R5900WriteLS : SchedWriteRes<[R5900LS]> { let Latency = 2; }
 def R5900WriteBR : SchedWriteRes<[R5900BR]>;
 
-def R5900WriteFPLS : SchedWriteRes<[R5900FPU]> { let Latency = 2; }
+def R5900WriteFPLS : SchedWriteRes<[R5900FPU]> { let Latency = 3; }
 def R5900WriteFP : SchedWriteRes<[R5900FPU]> { let Latency = 4; }
 def R5900WriteFPDiv : SchedWriteRes<[R5900FPU]> {
-  let Latency = 8;
+  let Latency = 7;
   let ReleaseAtCycles = [7];
 }
 def R5900WriteFPRsqrt : SchedWriteRes<[R5900FPU]> {
-  let Latency = 14;
+  let Latency = 13;
   let ReleaseAtCycles = [13];
 }
-def R5900WriteXfer : SchedWriteRes<[R5900FPU, R5900LS]> { let Latency = 2; }
+// Compare results are read by the core side (bc1t/bc1f); measured about 5.5
+// cycles from c.cond.s to a taken bc1t, of which 2 are the taken branch.
+def R5900WriteFPCmp : SchedWriteRes<[R5900FPU]> { let Latency = 6; }
+def R5900WriteMTC1 : SchedWriteRes<[R5900FPU, R5900LS]> { let Latency = 3; }
+def R5900WriteMFC1 : SchedWriteRes<[R5900FPU, R5900LS]> { let Latency = 2; }
 
 def R5900WriteIMul : SchedWriteRes<[R5900ALU0]> {
   let Latency = 4;
@@ -79,11 +84,13 @@ def : InstRW<[R5900WriteLS], (instregex
 def : InstRW<[R5900WriteFPLS], (instregex "^(LWC1|SWC1)$")>;
 
 def : InstRW<[R5900WriteFP], (instregex
-  "^(FADD_S|FSUB_S|FMUL_S|FABS_S|FNEG_S|FMOV_S|FCMP_S32|CVT_S_W|CVT_W_S|"
+  "^(FADD_S|FSUB_S|FMUL_S|FABS_S|FNEG_S|FMOV_S|CVT_S_W|CVT_W_S|"
   "TRUNC_W_S|MAX_S_R5900|MIN_S_R5900)$")>;
 def : InstRW<[R5900WriteFPDiv], (instregex "^(FDIV_S|FSQRT_S|FSQRT_S_R5900)$")>;
 def : InstRW<[R5900WriteFPRsqrt], (instregex "^RSQRT_S_R5900$")>;
-def : InstRW<[R5900WriteXfer], (instregex "^(MFC1|MTC1)$")>;
+def : InstRW<[R5900WriteFPCmp], (instregex "^FCMP_S32$")>;
+def : InstRW<[R5900WriteMTC1], (instregex "^MTC1$")>;
+def : InstRW<[R5900WriteMFC1], (instregex "^MFC1$")>;
 
 def : InstRW<[R5900WriteBR], (instregex
   "^(BEQ|BEQ64|BNE|BNE64|BGEZ|BGEZ64|BGTZ|BLEZ|BLTZ|J|JR|JAL|JALR|JALR64|"

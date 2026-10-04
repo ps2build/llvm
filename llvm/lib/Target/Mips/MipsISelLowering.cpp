@@ -520,6 +520,23 @@ static SDValue performDivRemCombine(SDNode *N, SelectionDAG &DAG,
   return SDValue();
 }
 
+/// The R5900 FPU implements only C.F, C.EQ, C.LT and C.LE. Rewrite a condition
+/// onto those, or their inversions (which the branch/move users invert), by
+/// swapping operands where needed. ONE, UEQ, ORD and UNO have no single-compare
+/// form and are expanded before they get here.
+static ISD::CondCode canonicalizeR5900FPCond(SDValue &LHS, SDValue &RHS,
+                                             ISD::CondCode CC) {
+  switch (CC) {
+  default: return CC;
+  case ISD::SETULT: std::swap(LHS, RHS); return ISD::SETUGT;
+  case ISD::SETULE: std::swap(LHS, RHS); return ISD::SETUGE;
+  case ISD::SETOGT: std::swap(LHS, RHS); return ISD::SETOLT;
+  case ISD::SETOGE: std::swap(LHS, RHS); return ISD::SETOLE;
+  case ISD::SETGT:  std::swap(LHS, RHS); return ISD::SETLT;
+  case ISD::SETGE:  std::swap(LHS, RHS); return ISD::SETLE;
+  }
+}
+
 static Mips::CondCode condCodeToFCC(ISD::CondCode CC) {
   switch (CC) {
   default: llvm_unreachable("Unknown fp condition code!");
@@ -560,7 +577,8 @@ static bool invertFPCondCodeUser(Mips::CondCode CC) {
 
 // Creates and returns an FPCmp node from a setcc node.
 // Returns Op if setcc is not a floating point comparison.
-static SDValue createFPCmp(SelectionDAG &DAG, const SDValue &Op) {
+static SDValue createFPCmp(SelectionDAG &DAG, const SDValue &Op,
+                           bool IsR5900) {
   // must be a SETCC node
   if (Op.getOpcode() != ISD::SETCC && Op.getOpcode() != ISD::STRICT_FSETCC &&
       Op.getOpcode() != ISD::STRICT_FSETCCS)
@@ -577,6 +595,8 @@ static SDValue createFPCmp(SelectionDAG &DAG, const SDValue &Op) {
   // Assume the 3rd operand is a CondCodeSDNode. Add code to check the type of
   // node if necessary.
   ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(2))->get();
+  if (IsR5900)
+    CC = canonicalizeR5900FPCond(LHS, RHS, CC);
 
   return DAG.getNode(MipsISD::FPCmp, DL, MVT::Glue, LHS, RHS,
                      DAG.getConstant(condCodeToFCC(CC), DL, MVT::i32));
@@ -2144,7 +2164,7 @@ SDValue MipsTargetLowering::lowerBRCOND(SDValue Op, SelectionDAG &DAG) const {
   SDLoc DL(Op);
 
   assert(!Subtarget.hasMips32r6() && !Subtarget.hasMips64r6());
-  SDValue CondRes = createFPCmp(DAG, Op.getOperand(1));
+  SDValue CondRes = createFPCmp(DAG, Op.getOperand(1), Subtarget.isR5900());
 
   // Return if flag is not set by a floating point comparison.
   if (CondRes.getOpcode() != MipsISD::FPCmp)
@@ -2163,7 +2183,7 @@ SDValue MipsTargetLowering::
 lowerSELECT(SDValue Op, SelectionDAG &DAG) const
 {
   assert(!Subtarget.hasMips32r6() && !Subtarget.hasMips64r6());
-  SDValue Cond = createFPCmp(DAG, Op.getOperand(0));
+  SDValue Cond = createFPCmp(DAG, Op.getOperand(0), Subtarget.isR5900());
 
   // Return if flag is not set by a floating point comparison.
   if (Cond.getOpcode() != MipsISD::FPCmp)
@@ -2175,7 +2195,7 @@ lowerSELECT(SDValue Op, SelectionDAG &DAG) const
 
 SDValue MipsTargetLowering::lowerSETCC(SDValue Op, SelectionDAG &DAG) const {
   assert(!Subtarget.hasMips32r6() && !Subtarget.hasMips64r6());
-  SDValue Cond = createFPCmp(DAG, Op);
+  SDValue Cond = createFPCmp(DAG, Op, Subtarget.isR5900());
 
   assert(Cond.getOpcode() == MipsISD::FPCmp &&
          "Floating point operand expected.");
@@ -2195,6 +2215,8 @@ SDValue MipsTargetLowering::lowerFSETCC(SDValue Op, SelectionDAG &DAG) const {
   SDValue LHS = Op.getOperand(1);
   SDValue RHS = Op.getOperand(2);
   ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(3))->get();
+  if (Subtarget.isR5900())
+    CC = canonicalizeR5900FPCond(LHS, RHS, CC);
 
   SDValue Cond = DAG.getNode(MipsISD::FPCmp, DL, MVT::Glue, LHS, RHS,
                              DAG.getConstant(condCodeToFCC(CC), DL, MVT::i32));

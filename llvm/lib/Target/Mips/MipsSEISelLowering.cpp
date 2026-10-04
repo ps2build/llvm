@@ -349,15 +349,6 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
     setCondCodeAction(ISD::SETONE, MVT::f32, Expand);
     setCondCodeAction(ISD::SETUEQ, MVT::f32, Expand);
     setCondCodeAction(ISD::SETNE, MVT::f32, Expand);
-
-    // R5900 FPU does not support IEEE 754 special values (NaN, infinity). Use
-    // custom lowering to decide per-instruction: hardware when nnan+ninf flags
-    // guarantee no NaN or infinity, software libcall otherwise.
-    setOperationAction(ISD::FADD, MVT::f32, Custom);
-    setOperationAction(ISD::FSUB, MVT::f32, Custom);
-    setOperationAction(ISD::FMUL, MVT::f32, Custom);
-    setOperationAction(ISD::FDIV, MVT::f32, Custom);
-    setOperationAction(ISD::FSQRT, MVT::f32, Custom);
   }
 
   computeRegisterProperties(Subtarget.getRegisterInfo());
@@ -616,39 +607,9 @@ SDValue MipsSETargetLowering::LowerOperation(SDValue Op,
   case ISD::STRICT_FP_TO_FP16:
     return lowerFP_TO_FP16(Op, DAG);
   case ISD::BITCAST:            return lowerBITCAST(Op, DAG);
-  case ISD::FADD:
-    return lowerR5900FPOp(Op, DAG, RTLIB::ADD_F32);
-  case ISD::FSUB:
-    return lowerR5900FPOp(Op, DAG, RTLIB::SUB_F32);
-  case ISD::FMUL:
-    return lowerR5900FPOp(Op, DAG, RTLIB::MUL_F32);
-  case ISD::FDIV:
-    return lowerR5900FPOp(Op, DAG, RTLIB::DIV_F32);
-  case ISD::FSQRT:
-    return lowerR5900FPOp(Op, DAG, RTLIB::SQRT_F32);
   }
 
   return MipsTargetLowering::LowerOperation(Op, DAG);
-}
-
-SDValue MipsSETargetLowering::lowerR5900FPOp(SDValue Op, SelectionDAG &DAG,
-                                             RTLIB::Libcall LC) const {
-  assert(Subtarget.isR5900());
-  SDNodeFlags Flags = Op->getFlags();
-
-  if (Flags.hasNoNaNs() && Flags.hasNoInfs()) {
-    // Use the hardware FPU instruction if the operation is guaranteed to have
-    // no NaN or infinity inputs/outputs (nnan+ninf flags).
-    return Op;
-  }
-
-  // Fall back to a software libcall for IEEE correctness.
-  SDLoc DL(Op);
-  MVT VT = Op.getSimpleValueType();
-  SmallVector<SDValue, 2> Ops(Op->op_begin(), Op->op_end());
-  TargetLowering::MakeLibCallOptions CallOptions;
-  auto [Result, Chain] = makeLibCall(DAG, LC, VT, Ops, CallOptions, DL);
-  return Result;
 }
 
 // Fold zero extensions into MipsISD::VEXTRACT_[SZ]EXT_ELT

@@ -1,46 +1,48 @@
 ; RUN: llc -mtriple=mips64el -mcpu=r5900 < %s | FileCheck %s
 ;
-; R5900 FPU does not implement IEEE 754 NaN or infinity. Arithmetic operations
-; use software libcall fallbacks by default for IEEE correctness. Hardware FPU
-; instructions are used when per-instruction nnan+ninf flags guarantee no NaN
-; or infinity inputs/outputs.
+; R5900 single-precision arithmetic uses the hardware FPU, with or without
+; fast-math flags, and never calls the soft-float routines.
 
 define float @test_fadd(float %a, float %b) {
 ; CHECK-LABEL: test_fadd:
-; CHECK: jal __addsf3
+; CHECK-NOT: jal
+; CHECK: add.s
   %result = fadd float %a, %b
   ret float %result
 }
 
 define float @test_fsub(float %a, float %b) {
 ; CHECK-LABEL: test_fsub:
-; CHECK: jal __subsf3
+; CHECK-NOT: jal
+; CHECK: sub.s
   %result = fsub float %a, %b
   ret float %result
 }
 
 define float @test_fmul(float %a, float %b) {
 ; CHECK-LABEL: test_fmul:
-; CHECK: jal __mulsf3
+; CHECK-NOT: jal
+; CHECK: mul.s
   %result = fmul float %a, %b
   ret float %result
 }
 
 define float @test_fdiv(float %a, float %b) {
 ; CHECK-LABEL: test_fdiv:
-; CHECK: jal __divsf3
+; CHECK-NOT: jal
+; CHECK: div.s
   %result = fdiv float %a, %b
   ret float %result
 }
 
 define float @test_fsqrt(float %a) {
 ; CHECK-LABEL: test_fsqrt:
-; CHECK: jal sqrtf
+; CHECK-NOT: jal
+; CHECK: sqrt.s
   %result = call float @llvm.sqrt.f32(float %a)
   ret float %result
 }
 
-; Per-instruction nnan+ninf flags select hardware directly.
 define float @test_fadd_nnan_ninf(float %a, float %b) {
 ; CHECK-LABEL: test_fadd_nnan_ninf:
 ; CHECK: add.s
@@ -48,31 +50,10 @@ define float @test_fadd_nnan_ninf(float %a, float %b) {
   ret float %result
 }
 
-define float @test_fsub_nnan_ninf(float %a, float %b) {
-; CHECK-LABEL: test_fsub_nnan_ninf:
-; CHECK: sub.s
-  %result = fsub nnan ninf float %a, %b
-  ret float %result
-}
-
 define float @test_fmul_nnan_ninf(float %a, float %b) {
 ; CHECK-LABEL: test_fmul_nnan_ninf:
 ; CHECK: mul.s
   %result = fmul nnan ninf float %a, %b
-  ret float %result
-}
-
-define float @test_fdiv_nnan_ninf(float %a, float %b) {
-; CHECK-LABEL: test_fdiv_nnan_ninf:
-; CHECK: div.s
-  %result = fdiv nnan ninf float %a, %b
-  ret float %result
-}
-
-define float @test_fsqrt_nnan_ninf(float %a) {
-; CHECK-LABEL: test_fsqrt_nnan_ninf:
-; CHECK: sqrt.s
-  %result = call nnan ninf float @llvm.sqrt.f32(float %a)
   ret float %result
 }
 

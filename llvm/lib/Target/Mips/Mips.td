@@ -293,6 +293,7 @@ foreach i = {1-31} in
 include "MipsScheduleI6400.td"
 include "MipsScheduleP5600.td"
 include "MipsScheduleGeneric.td"
+include "MipsScheduleR5900.td"
 
 defm : RemapAllTargetPseudoPointerOperands<mips_ptr_rc>;
 
@@ -347,7 +348,7 @@ def : Proc<"mips64r6", [FeatureMips64r6]>;
 def : Proc<"octeon", [FeatureMips64r2, FeatureCnMips]>;
 def : Proc<"octeon+", [FeatureMips64r2, FeatureCnMips, FeatureCnMipsP]>;
 def : ProcessorModel<"p5600", MipsP5600Model, [ImplP5600]>;
-def : Proc<"r5900", [FeatureR5900]>;
+def : ProcessorModel<"r5900", MipsR5900Model, [FeatureR5900]>;
 def : ProcessorModel<"i6400", MipsI6400Model, [ImplI6400]>;
 def : ProcessorModel<"i6500", MipsI6400Model, [ImplI6500]>;
 

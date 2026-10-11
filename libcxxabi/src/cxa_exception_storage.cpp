@@ -24,13 +24,7 @@ extern "C" {
 } // extern "C"
 } // namespace __cxxabiv1
 
-#elif __has_feature(cxx_thread_local) && !defined(__ps2sdk__)
-// __ps2sdk__: clang accepts the thread_local keyword here (__has_feature
-// says so), but this target's crt0/linker script have no PT_TLS/
-// __tls_get_addr support - a real ELF TLS relocation would fail to link
-// ("has an STT_TLS symbol but doesn't have a PT_TLS segment"). Falls
-// through to the pthread_getspecific-based globals below instead, which
-// needs no TLS relocations at all.
+#elif __has_feature(cxx_thread_local)
 
 namespace __cxxabiv1 {
 namespace {

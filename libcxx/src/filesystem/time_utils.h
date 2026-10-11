@@ -285,6 +285,15 @@ inline TimeSpec extract_atime(StatT const& st) {
   TimeSpec TS = {st.st_atime, 0};
   return TS;
 }
+#elif defined(__ps2sdk__)
+inline TimeSpec extract_mtime(StatT const& st) {
+  TimeSpec TS = {st.st_mtime, 0};
+  return TS;
+}
+inline TimeSpec extract_atime(StatT const& st) {
+  TimeSpec TS = {st.st_atime, 0};
+  return TS;
+}
 #elif defined(_AIX)
 inline TimeSpec extract_mtime(StatT const& st) {
   TimeSpec TS = {st.st_mtime, st.st_mtime_n};

@@ -81,11 +81,26 @@ using parser::createView;
 using parser::PathParser;
 using parser::string_view_t;
 
+#if defined(__ps2sdk__)
+// "host:dir/file" and "mc0:/dir" name a device; the device prefix makes them absolute.
+static bool __has_device_prefix(const path& p) {
+  const auto& s = p.native();
+  size_t i = 0;
+  while (i < s.size() && s[i] != ':' && s[i] != '/')
+    ++i;
+  return i > 0 && i < s.size() && s[i] == ':';
+}
+#endif
+
 static path __do_absolute(const path& p, path* cwd, error_code* ec) {
   if (ec)
     ec->clear();
   if (p.is_absolute())
     return p;
+#if defined(__ps2sdk__)
+  if (__has_device_prefix(p))
+    return p;
+#endif
   *cwd = __current_path(ec);
   if (ec && *ec)
     return {};

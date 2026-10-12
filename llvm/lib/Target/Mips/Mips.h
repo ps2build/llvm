@@ -51,6 +51,8 @@ FunctionPass *createMipsExpandPseudoPass();
 FunctionPass *createMipsPreLegalizeCombiner();
 FunctionPass *createMipsPostLegalizeCombiner(bool IsOptNone);
 FunctionPass *createMipsMulMulBugPass();
+FunctionPass *createMipsSplitHi16Pass();
+FunctionPass *createMipsSinkHi16Pass();
 FunctionPass *createMipsSetMachineRegisterFlagsPass();
 
 InstructionSelector *
@@ -66,6 +68,8 @@ void initializeMipsMulMulBugFixPass(PassRegistry &);
 void initializeMipsPostLegalizerCombinerPass(PassRegistry &);
 void initializeMipsPreLegalizerCombinerPass(PassRegistry &);
 void initializeMipsSetMachineRegisterFlagsPass(PassRegistry &);
+void initializeMipsSplitHi16Pass(PassRegistry &);
+void initializeMipsSinkHi16Pass(PassRegistry &);
 } // namespace llvm
 
 #endif

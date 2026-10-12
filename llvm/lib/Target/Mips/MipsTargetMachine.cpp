@@ -67,6 +67,8 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMipsTarget() {
   initializeMicroMipsSizeReducePass(*PR);
   initializeMipsPreLegalizerCombinerPass(*PR);
   initializeMipsPostLegalizerCombinerPass(*PR);
+  initializeMipsSplitHi16Pass(*PR);
+  initializeMipsSinkHi16Pass(*PR);
   initializeMipsMulMulBugFixPass(*PR);
   initializeMipsDAGToDAGISelLegacyPass(*PR);
   initializeMipsSetMachineRegisterFlagsPass(*PR);
@@ -250,6 +252,7 @@ bool MipsPassConfig::addInstSelector() {
 
 void MipsPassConfig::addPreRegAlloc() {
   addPass(createMipsOptimizePICCallPass());
+  addPass(createMipsSplitHi16Pass());
   addPass(createMipsSetMachineRegisterFlagsPass());
 }
 
@@ -274,6 +277,9 @@ MachineFunctionInfo *MipsTargetMachine::createMachineFunctionInfo(
 // Implemented by targets that want to run passes immediately before
 // machine code is emitted.
 void MipsPassConfig::addPreEmitPass() {
+  // Keeps each %hi lui next to the instruction that uses it; see the pass.
+  addPass(createMipsSinkHi16Pass());
+
   // Expand pseudo instructions that are sensitive to register allocation.
   addPass(createMipsExpandPseudoPass());
 

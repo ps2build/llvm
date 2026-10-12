@@ -759,9 +759,8 @@ void MCObjectStreamer::emitFill(const MCExpr &NumValues, int64_t Size,
   // Do additional checking now if we can resolve the value.
   if (NumValues.evaluateAsAbsolute(IntNumValues, getAssembler()) &&
       IntNumValues < 0) {
-    getContext().getSourceManager()->PrintMessage(
-        Loc, SourceMgr::DK_Warning,
-        "'.fill' directive with negative repeat count has no effect");
+    getContext().reportWarning(
+        Loc, "'.fill' directive with negative repeat count has no effect");
     return;
   }
 

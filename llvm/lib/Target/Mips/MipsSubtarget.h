@@ -130,6 +130,9 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // IsR5900 - CPU is R5900 (PlayStation 2 Emotion Engine).
   bool IsR5900;
 
+  // IsR3000A - CPU is R3000A (PlayStation 2 IOP).
+  bool IsR3000A;
+
   // FixR5900 - Enable R5900 short loop erratum fix.
   bool FixR5900;
 
@@ -255,7 +258,9 @@ public:
   bool enablePostRAScheduler() const override;
 
   /// The R5900 has a scheduling model; other Mips CPUs keep the default.
-  bool enableMachineScheduler() const override { return IsR5900; }
+  bool enableMachineScheduler() const override {
+    return IsR5900 || IsR3000A;
+  }
   void getCriticalPathRCs(RegClassVector &CriticalPathRCs) const override;
   CodeGenOptLevel getOptLevelToEnablePostRAScheduler() const override;
 
@@ -319,6 +324,7 @@ public:
   bool hasCnMips() const { return HasCnMips; }
   bool hasCnMipsP() const { return HasCnMipsP; }
   bool isR5900() const { return IsR5900; }
+  bool isR3000A() const { return IsR3000A; }
   bool hasPS2Cache() const { return HasPS2Cache; }
   bool fixR5900() const { return FixR5900; }
   bool hasVU0() const { return HasVU0; }

@@ -213,7 +213,7 @@ def FeaturePS2Cache : SubtargetFeature<"ps2cache", "HasPS2Cache", "true",
 
 // Clang passes -mcpu=<name> to the backend as +<name>, so the CPU needs a
 // feature of the same name or every compile warns.
-def FeatureR3000A : SubtargetFeature<"r3000a", "HasPS2Cache", "true",
+def FeatureR3000A : SubtargetFeature<"r3000a", "IsR3000A", "true",
                                      "R3000A (PS2 IOP) support",
                                      [FeatureMips1, FeaturePS2Cache]>;
 
@@ -299,6 +299,7 @@ foreach i = {1-31} in
 include "MipsScheduleI6400.td"
 include "MipsScheduleP5600.td"
 include "MipsScheduleGeneric.td"
+include "MipsScheduleR3000A.td"
 include "MipsScheduleR5900.td"
 
 defm : RemapAllTargetPseudoPointerOperands<mips_ptr_rc>;
@@ -335,7 +336,7 @@ def : Proc<"mips1", [FeatureMips1]>;
 // in this file for why that's not the same as pulling in real MIPS III/32
 // codegen support). Named for the real chip, not a generic ISA bucket -
 // same reasoning as r5900 below.
-def : Proc<"r3000a", [FeatureR3000A]>;
+def : ProcessorModel<"r3000a", MipsR3000AModel, [FeatureR3000A]>;
 def : Proc<"mips2", [FeatureMips2]>;
 def : Proc<"mips32", [FeatureMips32]>;
 def : Proc<"mips32r2", [FeatureMips32r2]>;

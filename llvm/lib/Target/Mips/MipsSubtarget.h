@@ -137,6 +137,10 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // into the load/store offset (see FeatureConstAddrFold in Mips.td).
   bool FoldConstantAddresses;
 
+  // FillDelaySlotFromSucc - the delay slot filler may take an instruction from
+  // the likelier successor block (see FeatureDelaySlotSuccFill in Mips.td).
+  bool FillDelaySlotFromSucc;
+
   // FixR5900 - Enable R5900 short loop erratum fix.
   bool FixR5900;
 
@@ -330,6 +334,7 @@ public:
   bool isR5900() const { return IsR5900; }
   bool isR3000A() const { return IsR3000A; }
   bool foldConstantAddresses() const { return FoldConstantAddresses; }
+  bool fillDelaySlotFromSucc() const { return FillDelaySlotFromSucc; }
   bool hasPS2Cache() const { return HasPS2Cache; }
   bool fixR5900() const { return FixR5900; }
   bool hasVU0() const { return HasVU0; }

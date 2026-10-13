@@ -3456,7 +3456,10 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   // cause issues with $gp register handling (see D24763).
   bool IsMustTail = CLI.CB && CLI.CB->isMustTailCall();
   bool CalleeIsLocal = true;
-  if (GlobalAddressSDNode *G = dyn_cast<GlobalAddressSDNode>(Callee)) {
+  // On a CPU that opts in to tail calls, code without SVR4 abicalls has no $gp
+  // to restore after the call, so the callee does not have to be local.
+  bool NeedLocalCallee = !(Subtarget.useTailCalls() && !Subtarget.isABICalls());
+  if (auto *G = dyn_cast<GlobalAddressSDNode>(Callee); G && NeedLocalCallee) {
     const GlobalValue *GV = G->getGlobal();
     bool HasLocalLinkage = GV->hasLocalLinkage() || GV->hasPrivateLinkage();
     bool HasHiddenVisibility =
@@ -3468,7 +3471,9 @@ MipsTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   }
 
   if (IsTailCall) {
-    if (!UseMipsTailCalls) {
+    // The command-line option overrides the subtarget default either way.
+    if (UseMipsTailCalls.getNumOccurrences() ? !UseMipsTailCalls
+                                              : !Subtarget.useTailCalls()) {
       IsTailCall = false;
       if (IsMustTail)
         report_fatal_error("failed to perform tail call elimination on a call "

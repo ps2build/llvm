@@ -245,6 +245,14 @@ def FeatureSharedGlobalBase : SubtargetFeature<"shared-global-base",
                                                "Build a global's address once "
                                                "for repeated accesses">;
 
+// Turn a call in tail position into a jump when the callee's arguments fit in
+// the caller's incoming argument area. The caller then needs neither a frame
+// nor callee-saved registers to hold its arguments across the call. Disabled by
+// default in LLVM because of $gp handling in position independent code; the
+// PS2 IOP is static, non-PIC code.
+def FeatureTailCalls : SubtargetFeature<"tail-calls", "UseTailCalls", "true",
+                                        "Permit tail calls">;
+
 // Clang passes -mcpu=<name> to the backend as +<name>, so the CPU needs a
 // feature of the same name or every compile warns.
 def FeatureR3000A : SubtargetFeature<"r3000a", "IsR3000A", "true",
@@ -253,7 +261,8 @@ def FeatureR3000A : SubtargetFeature<"r3000a", "IsR3000A", "true",
                                       FeatureConstAddrFold,
                                       FeatureDelaySlotSuccFill,
                                       FeatureRestoreRAFirst,
-                                      FeatureSharedGlobalBase]>;
+                                      FeatureSharedGlobalBase,
+                                      FeatureTailCalls]>;
 
 def FeatureR5900 : SubtargetFeature<"r5900", "IsR5900", "true",
                                     "R5900 (PS2 Emotion Engine) Support",

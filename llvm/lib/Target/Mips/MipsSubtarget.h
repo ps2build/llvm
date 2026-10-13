@@ -149,6 +149,9 @@ class MipsSubtarget : public MipsGenSubtargetInfo {
   // FeatureSharedGlobalBase in Mips.td).
   bool ShareGlobalBase;
 
+  // UseTailCalls - permit tail calls (see FeatureTailCalls in Mips.td).
+  bool UseTailCalls;
+
   // FixR5900 - Enable R5900 short loop erratum fix.
   bool FixR5900;
 
@@ -345,6 +348,7 @@ public:
   bool fillDelaySlotFromSucc() const { return FillDelaySlotFromSucc; }
   bool restoreRAFirst() const { return RestoreRAFirst; }
   bool shareGlobalBase() const { return ShareGlobalBase; }
+  bool useTailCalls() const { return UseTailCalls; }
   bool hasPS2Cache() const { return HasPS2Cache; }
   bool fixR5900() const { return FixR5900; }
   bool hasVU0() const { return HasVU0; }

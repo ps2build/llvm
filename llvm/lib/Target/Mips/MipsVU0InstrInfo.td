@@ -2617,6 +2617,10 @@ def P_MULT1_3 : R5900_MULDIV3<"mult1">,  R5900_RDRSRT_FM<0x1c, 0x18>;
 def P_MULTU1_3: R5900_MULDIV3<"multu1">, R5900_RDRSRT_FM<0x1c, 0x19>;
 def P_MULT3   : R5900_MULDIV3<"mult">,   R5900_RDRSRT_FM<0x00, 0x18>;
 def P_MULTU3  : R5900_MULDIV3<"multu">,  R5900_RDRSRT_FM<0x00, 0x19>;
+let Defs = [HI0, LO0], isCodeGenOnly = 1,
+    AddedComplexity = 10 in
+def MUL_R5900 : ArithLogicR<"mult", GPR32Opnd, 1, mul>,
+                R5900_RDRSRT_FM<0x00, 0x18>;
 def P_DIV1_Z  : R5900_DIVZ<"div1">,      R5900_ZRSRT_FM<0x1c, 0x1a>;
 def P_DIVU1_Z : R5900_DIVZ<"divu1">,     R5900_ZRSRT_FM<0x1c, 0x1b>;
 }

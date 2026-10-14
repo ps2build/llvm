@@ -99,7 +99,7 @@ def : InstRW<[R5900WriteBR], (instregex
 def : InstRW<[R5900WriteALU0], (instregex
   "^(MFHI|MFLO|MTHI|MTLO|PseudoMFHI|PseudoMFLO|PseudoMTLOHI)$")>;
 def : InstRW<[R5900WriteIMul], (instregex
-  "^(MULT|MULTu|MUL|PseudoMULT|PseudoMULTu)$")>;
+  "^(MULT|MULTu|MUL|MUL_R5900|PseudoMULT|PseudoMULTu)$")>;
 def : InstRW<[R5900WriteIDiv], (instregex "^(DIV|DIVu|PseudoSDIV|PseudoUDIV)$")>;
 
 }

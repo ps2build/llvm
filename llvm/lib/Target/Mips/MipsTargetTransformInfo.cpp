@@ -53,6 +53,17 @@ bool MipsTTIImpl::hasDivRemOp(Type *DataType, bool IsSigned) const {
                                        VT);
 }
 
+void MipsTTIImpl::getUnrollingPreferences(
+    Loop *L, ScalarEvolution &SE, TTI::UnrollingPreferences &UP,
+    OptimizationRemarkEmitter *ORE) const {
+  BaseT::getUnrollingPreferences(L, SE, UP, ORE);
+  if (!ST->isR5900())
+    return;
+  UP.Partial = true;
+  UP.Runtime = true;
+  UP.PartialThreshold = 64;
+}
+
 InstructionCost MipsTTIImpl::getArithmeticInstrCost(
     unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
     TTI::OperandValueInfo Op1Info, TTI::OperandValueInfo Op2Info,

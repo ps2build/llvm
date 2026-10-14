@@ -16,6 +16,17 @@ bool MipsTTIImpl::hasDivRemOp(Type *DataType, bool IsSigned) const {
                                        VT);
 }
 
+void MipsTTIImpl::getUnrollingPreferences(
+    Loop *L, ScalarEvolution &SE, TTI::UnrollingPreferences &UP,
+    OptimizationRemarkEmitter *ORE) const {
+  BaseT::getUnrollingPreferences(L, SE, UP, ORE);
+  if (!ST->isR5900())
+    return;
+  UP.Partial = true;
+  UP.Runtime = true;
+  UP.PartialThreshold = 64;
+}
+
 bool MipsTTIImpl::isLSRCostLess(const TargetTransformInfo::LSRCost &C1,
                                 const TargetTransformInfo::LSRCost &C2) const {
   // MIPS specific here are "instruction number 1st priority".

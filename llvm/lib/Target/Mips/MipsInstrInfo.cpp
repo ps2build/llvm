@@ -606,7 +606,7 @@ bool MipsInstrInfo::SafeInForbiddenSlot(const MachineInstr &MI) const {
 }
 
 // The R5900 takes about six cycles from c.cond.s to bc1t/bc1f; FP arithmetic
-// left ahead of the branch runs in that gap instead of after it.
+// left ahead of that branch runs in the gap instead of after it.
 bool MipsInstrInfo::shouldSink(const MachineInstr &MI) const {
   if (!Subtarget.isR5900() || MI.mayLoadOrStore() || MI.getNumDefs() != 1)
     return true;
@@ -614,7 +614,12 @@ bool MipsInstrInfo::shouldSink(const MachineInstr &MI) const {
   if (!Def.isReg() || !Def.getReg().isVirtual())
     return true;
   const MachineRegisterInfo &MRI = MI.getMF()->getRegInfo();
-  return MRI.getRegClass(Def.getReg()) != &Mips::FGR32RegClass;
+  if (MRI.getRegClass(Def.getReg()) != &Mips::FGR32RegClass)
+    return true;
+  for (const MachineInstr &Term : MI.getParent()->terminators())
+    if (Term.getOpcode() == Mips::BC1T || Term.getOpcode() == Mips::BC1F)
+      return false;
+  return true;
 }
 
 bool MipsInstrInfo::SafeInFPUDelaySlot(const MachineInstr &MIInSlot,

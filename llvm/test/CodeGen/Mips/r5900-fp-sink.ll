@@ -79,3 +79,22 @@ exit:
 
 declare float @llvm.fmuladd.f32(float, float, float)
 declare float @llvm.sqrt.f32(float)
+
+; Ahead of an integer branch there is no gap to fill, so the multiply still
+; sinks to the only block that uses it.
+define float @int_branch(float %a, float %b, i32 %c) {
+; CHECK-LABEL: int_branch:
+; CHECK:         beqz
+; CHECK-NOT:     mul.s
+; CHECK:         jr $ra
+; CHECK:         mul.s $f0, $f12, $f13
+entry:
+  %m = fmul float %a, %b
+  %t = icmp eq i32 %c, 0
+  br i1 %t, label %use, label %out
+use:
+  %r = fadd float %m, %a
+  ret float %r
+out:
+  ret float %a
+}

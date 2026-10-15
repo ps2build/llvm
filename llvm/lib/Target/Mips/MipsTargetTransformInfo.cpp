@@ -16,6 +16,28 @@ bool MipsTTIImpl::hasDivRemOp(Type *DataType, bool IsSigned) const {
                                        VT);
 }
 
+InstructionCost MipsTTIImpl::getArithmeticInstrCost(
+    unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
+    TTI::OperandValueInfo Op1Info, TTI::OperandValueInfo Op2Info,
+    ArrayRef<const Value *> Args, const Instruction *CxtI) const {
+  // R5900 FPU arithmetic has a 4-cycle latency, and the FPU has no conditional
+  // move, so speculating it to form a select also costs a compare and branch.
+  if (ST->isR5900() && Ty->isFloatTy() &&
+      (CostKind == TTI::TCK_Latency || CostKind == TTI::TCK_SizeAndLatency)) {
+    switch (Opcode) {
+    case Instruction::FAdd:
+    case Instruction::FSub:
+    case Instruction::FMul:
+    case Instruction::FNeg:
+      return 4;
+    default:
+      break;
+    }
+  }
+  return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Op1Info, Op2Info,
+                                       Args, CxtI);
+}
+
 bool MipsTTIImpl::isLSRCostLess(const TargetTransformInfo::LSRCost &C1,
                                 const TargetTransformInfo::LSRCost &C2) const {
   // MIPS specific here are "instruction number 1st priority".

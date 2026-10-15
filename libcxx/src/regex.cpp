@@ -306,11 +306,12 @@ struct classnames {
   regex_traits<char>::char_class_type mask_;
 };
 
-// newlib's real ctype_base::mask values carry the sign bit on some
-// entries (e.g. blank/print) - regex_traits<char>::char_class_type is
-// unsigned short, so narrowing them implicitly is ill-formed under
-// -Wc++11-narrowing even though the bit pattern itself is fine.
-#define _LIBCPP_MASK(x) static_cast<regex_traits<char>::char_class_type>(x)
+// newlib's ctype_base::mask values are negative and narrow to char_class_type.
+#if defined(__ps2sdk__)
+#  define _LIBCPP_MASK(x) static_cast<regex_traits<char>::char_class_type>(x)
+#else
+#  define _LIBCPP_MASK(x) x
+#endif
 
 const classnames ClassNames[] = {
     {"alnum", _LIBCPP_MASK(ctype_base::alnum)},

@@ -276,7 +276,7 @@ public:
   /// This overrides the PostRAScheduler bit in the SchedModel for each CPU.
   bool enablePostRAScheduler() const override;
 
-  /// The R5900 has a scheduling model; other Mips CPUs keep the default.
+  /// The R5900 and R3000A have scheduling models; others keep the default.
   bool enableMachineScheduler() const override {
     return IsR5900 || IsR3000A;
   }

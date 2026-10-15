@@ -222,18 +222,17 @@ class VU0_SQC2_FM : StdArch {
 // LQC2/SQC2 reuse LDC2/SDC2's exact opcode (see comment above) - LDC2/SDC2
 // themselves are unconditional (no predicate gating), so the disassembler
 // table generator sees a genuine same-encoding conflict between them and
-// ours in the default "Mips" decode table. A dedicated DecoderNamespace
-// sidesteps it; this workspace's clang doesn't wire up VU0 disassembly
-// anyway (asm/inline-asm direction only, per the plan).
-let Predicates = [HasVU0], hasNoSchedulingInfo = 1, DecoderNamespace = "VU0" in {
+// ours in the default "Mips" decode table. The R5900 table is tried before
+// it, so these win on the EE.
+let Predicates = [HasVU0], hasNoSchedulingInfo = 1, DecoderNamespace = "R5900" in {
 def LQC2 : InstSE<(outs VU0VFOpnd:$vf), (ins mem:$addr), "lqc2\t$vf, $addr",
                   [], FrmFI>, VU0_LQC2_FM {
-  let DecoderMethod = "DecodeMem";
+  let DecoderMethod = "DecodeVU0Mem";
   let mayLoad = 1;
 }
 def SQC2 : InstSE<(outs), (ins VU0VFOpnd:$vf, mem:$addr), "sqc2\t$vf, $addr",
                   [], FrmFI>, VU0_SQC2_FM {
-  let DecoderMethod = "DecodeMem";
+  let DecoderMethod = "DecodeVU0Mem";
   let mayStore = 1;
 }
 }
@@ -1145,7 +1144,7 @@ def BC2TL : VU0_BC2_DESC<"bc2tl">, VU0_BC2_FM<0b00011>;
 // need a 128-bit GPR class to encode "move the register named $s0",
 // same reasoning as VU0's asm-only scope above. opcodes/mips-opc.c:
 // lq=0x78000000 (op 0x1e), sq=0x7c000000 (op 0x1f).
-let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, DecoderNamespace = "VU0" in {
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, DecoderNamespace = "R5900" in {
 def LQ : InstSE<(outs GPR64Opnd:$rt), (ins mem:$addr), "lq\t$rt, $addr",
                 [], FrmFI>, LW_FM<0x1e> {
   let DecoderMethod = "DecodeMem";
@@ -1209,11 +1208,11 @@ def SYNC_P : InstSE<(outs), (ins), "sync.p", [], FrmOther>, StdArch {
 // s,t-only encoding for mult1/multu1/madd1/maddu1 (writes only HI1/LO1, not
 // also a GPR - the simpler, more commonly used form; mips-opc.c also has a
 // 3-operand d,s,t variant that additionally writes a GPR, not implemented
-// here). DecoderNamespace="VU0" for the same reason as lq/sq: SPECIAL/
+// here). DecoderNamespace="R5900" for the same reason as lq/sq: SPECIAL/
 // SPECIAL2/REGIMM are heavily used by generic MIPS instructions this
 // subtarget doesn't enable, but sharing the same decode table namespace
 // risks a TableGen decode-table conflict without it.
-let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, DecoderNamespace = "VU0" in {
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, DecoderNamespace = "R5900" in {
 // Auto-generated from real GNU binutils opcodes/mips-opc.c (toolchain/build/ee/binutils-gdb).
 // 102 instructions.
 
@@ -2273,6 +2272,7 @@ def P_DIV1 : InstSE<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
   let Inst{15-11} = 0x0;
   let Inst{10-6} = 0x0;
   let Inst{5-0} = 0x1a;
+  let isAsmParserOnly = 1;
 }
 def P_DIVU1 : InstSE<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
                  "divu1\t$rs, $rt", [], FrmOther>, StdArch {
@@ -2284,6 +2284,7 @@ def P_DIVU1 : InstSE<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
   let Inst{15-11} = 0x0;
   let Inst{10-6} = 0x0;
   let Inst{5-0} = 0x1b;
+  let isAsmParserOnly = 1;
 }
 def P_MADD1 : InstSE<(outs), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
                  "madd1\t$rs, $rt", [], FrmOther>, StdArch {
@@ -2427,7 +2428,7 @@ def P_MOVZ : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
 // satisfied on paper" - HasStdEnc, not FeatureMips3_32, was blocking
 // upstream's own CACHE/PREF; irrelevant to these, which don't use it).
 let Predicates = [HasPS2CachePred], hasNoSchedulingInfo = 1,
-    DecoderNamespace = "VU0" in {
+    DecoderNamespace = "R5900" in {
 def P2_CACHE : CacheOp<"cache", mem>, CACHEOP_FM<0b101111>;
 def P2_PREF  : CacheOp<"pref", mem>, CACHEOP_FM<0b110011>;
 }
@@ -2468,7 +2469,7 @@ class BC0_DESC<string opstr> :
   InstSE<(outs), (ins brtarget:$offset), !strconcat(opstr, "\t$offset"),
          [], FrmOther> {
   let Predicates = [IsR5900Pred];
-  let DecoderNamespace = "VU0";
+  let DecoderNamespace = "R5900";
   let hasNoSchedulingInfo = 1;
   let isBranch = 1;
   let isTerminator = 1;
@@ -2520,7 +2521,7 @@ class EEDBG_DESC<string opstr> :
   InstSE<(outs GPR32Opnd:$rt), (ins), !strconcat(opstr, "\t$rt"), [],
          FrmOther> {
   let Predicates = [IsR5900Pred];
-  let DecoderNamespace = "VU0";
+  let DecoderNamespace = "R5900";
   let hasNoSchedulingInfo = 1;
 }
 
@@ -2528,7 +2529,7 @@ class EEDBG_W_DESC<string opstr> :
   InstSE<(outs), (ins GPR32Opnd:$rt), !strconcat(opstr, "\t$rt"), [],
          FrmOther> {
   let Predicates = [IsR5900Pred];
-  let DecoderNamespace = "VU0";
+  let DecoderNamespace = "R5900";
   let hasNoSchedulingInfo = 1;
 }
 
@@ -2606,7 +2607,7 @@ class R5900_DIVZ<string opstr> :
          !strconcat(opstr, "\t$z, $rs, $rt"), [], FrmOther>;
 
 let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1,
-    DecoderNamespace = "VU0" in {
+    DecoderNamespace = "R5900" in {
 def P_MADD    : R5900_MULDIV2<"madd">,   R5900_RSRT_FM<0x1c, 0x00>;
 def P_MADDU   : R5900_MULDIV2<"maddu">,  R5900_RSRT_FM<0x1c, 0x01>;
 def P_MADD3   : R5900_MULDIV3<"madd">,   R5900_RDRSRT_FM<0x1c, 0x00>;
@@ -2615,8 +2616,10 @@ def P_MADD1_3 : R5900_MULDIV3<"madd1">,  R5900_RDRSRT_FM<0x1c, 0x20>;
 def P_MADDU1_3: R5900_MULDIV3<"maddu1">, R5900_RDRSRT_FM<0x1c, 0x21>;
 def P_MULT1_3 : R5900_MULDIV3<"mult1">,  R5900_RDRSRT_FM<0x1c, 0x18>;
 def P_MULTU1_3: R5900_MULDIV3<"multu1">, R5900_RDRSRT_FM<0x1c, 0x19>;
+let DecoderMethod = "DecodeR5900MulRd" in {
 def P_MULT3   : R5900_MULDIV3<"mult">,   R5900_RDRSRT_FM<0x00, 0x18>;
 def P_MULTU3  : R5900_MULDIV3<"multu">,  R5900_RDRSRT_FM<0x00, 0x19>;
+}
 let Defs = [HI0, LO0], isCodeGenOnly = 1,
     AddedComplexity = 10 in
 def MUL_R5900 : ArithLogicR<"mult", GPR32Opnd, 1, mul>,

@@ -1,0 +1,8 @@
+# RUN: llvm-mc --disassemble %s -triple=mips64el-unknown-linux -mcpu=mips3 2>&1 | FileCheck %s
+#
+# The R5900-only encodings do not decode for other MIPS III CPUs.
+
+0x10 0x00 0xc5 0x78 # CHECK: [[@LINE]]:1: warning: invalid instruction encoding
+0x89 0x43 0x42 0x70 # CHECK: [[@LINE]]:1: warning: invalid instruction encoding
+0x18 0x00 0x85 0x70 # CHECK: [[@LINE]]:1: warning: invalid instruction encoding
+0x18 0x18 0x85 0x00 # CHECK: [[@LINE]]:1: warning: invalid instruction encoding

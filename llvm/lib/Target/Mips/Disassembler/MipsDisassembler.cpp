@@ -238,10 +238,7 @@ static DecodeStatus DecodeCOP2RegisterClass(MCInst &Inst, unsigned RegNo,
   return MCDisassembler::Success;
 }
 
-// R5900 VU0 macro-mode 128-bit vector registers. Required for the table
-// generator to build (every RegisterOperand needs a decoder, even one only
-// ever reached through the assembler/inline-asm path); not otherwise
-// exercised since the VU0 disassembler tables themselves aren't populated.
+// R5900 VU0 macro-mode 128-bit vector registers.
 static DecodeStatus DecodeVU0VFRegisterClass(MCInst &Inst, unsigned RegNo,
                                              uint64_t Address,
                                              const MCDisassembler *Decoder) {
@@ -260,6 +257,21 @@ static DecodeStatus DecodeGPR32ZERORegisterClass(MCInst &Inst, unsigned RegNo,
   if (RegNo != 0)
     return MCDisassembler::Fail;
   Inst.addOperand(MCOperand::createReg(Mips::ZERO));
+  return MCDisassembler::Success;
+}
+
+// R5900 three-operand mult/multu. rd == 0 is the two-operand form, which the
+// main table decodes.
+static DecodeStatus DecodeR5900MulRd(MCInst &Inst, unsigned Insn,
+                                     uint64_t Address,
+                                     const MCDisassembler *Decoder) {
+  unsigned Rd = fieldFromInstruction(Insn, 11, 5);
+  if (Rd == 0)
+    return MCDisassembler::Fail;
+  for (unsigned RegNo : {Rd, fieldFromInstruction(Insn, 21, 5),
+                         fieldFromInstruction(Insn, 16, 5)})
+    Inst.addOperand(
+        MCOperand::createReg(getReg(Decoder, Mips::GPR64RegClassID, RegNo)));
   return MCDisassembler::Success;
 }
 
@@ -1068,6 +1080,22 @@ static DecodeStatus DecodeMem(MCInst &Inst, unsigned Insn, uint64_t Address,
 
   Inst.addOperand(MCOperand::createReg(Reg));
   Inst.addOperand(MCOperand::createReg(Base));
+  Inst.addOperand(MCOperand::createImm(Offset));
+
+  return MCDisassembler::Success;
+}
+
+// R5900 lqc2/sqc2: a VU0 VF register in the rt field.
+static DecodeStatus DecodeVU0Mem(MCInst &Inst, unsigned Insn, uint64_t Address,
+                                 const MCDisassembler *Decoder) {
+  int Offset = SignExtend32<16>(Insn & 0xffff);
+  unsigned RegNo = fieldFromInstruction(Insn, 16, 5);
+  unsigned BaseNo = fieldFromInstruction(Insn, 21, 5);
+
+  Inst.addOperand(
+      MCOperand::createReg(getReg(Decoder, Mips::VU0VFRegClassID, RegNo)));
+  Inst.addOperand(
+      MCOperand::createReg(getReg(Decoder, Mips::GPR32RegClassID, BaseNo)));
   Inst.addOperand(MCOperand::createImm(Offset));
 
   return MCDisassembler::Success;

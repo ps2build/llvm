@@ -697,6 +697,10 @@ public:
     return getSTI().hasFeature(Mips::FeatureMSA);
   }
 
+  bool hasVU0() const {
+    return getSTI().hasFeature(Mips::FeatureVU0);
+  }
+
   bool hasCnMips() const {
     return (getSTI().hasFeature(Mips::FeatureCnMips));
   }
@@ -6948,6 +6952,9 @@ ParseStatus MipsAsmParser::matchAnyRegisterNameWithoutDollar(
         getLexer().getLoc(), *this));
     return ParseStatus::Success;
   }
+
+  if (!hasVU0())
+    return ParseStatus::NoMatch;
 
   Index = matchVU0VFRegisterName(Identifier);
   if (Index != -1) {

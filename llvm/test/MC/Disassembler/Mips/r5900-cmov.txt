@@ -1,0 +1,4 @@
+# RUN: llvm-mc --disassemble %s -triple=mips64el-unknown-linux -mcpu=r5900 | FileCheck %s
+
+0x0a 0x18 0x85 0x00 # CHECK: movz $3, $4, $5
+0x0b 0x18 0x85 0x00 # CHECK: movn $3, $4, $5

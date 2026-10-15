@@ -184,6 +184,10 @@ def HasMips4_32  :    Predicate<"Subtarget->hasMips4_32()">,
                       AssemblerPredicate<(all_of FeatureMips4_32)>;
 def NotMips4_32  :    Predicate<"!Subtarget->hasMips4_32()">,
                       AssemblerPredicate<(all_of (not FeatureMips4_32))>;
+def HasMips4_32OrR5900 : Predicate<"Subtarget->hasMips4_32() || "
+                                  "Subtarget->isR5900()">,
+                        AssemblerPredicate<(any_of FeatureMips4_32,
+                                                   FeatureR5900)>;
 def HasMips4_32r2 :   Predicate<"Subtarget->hasMips4_32r2()">,
                       AssemblerPredicate<(all_of FeatureMips4_32r2)>;
 def HasMips5_32r2 :   Predicate<"Subtarget->hasMips5_32r2()">,
@@ -444,6 +448,13 @@ class INSN_MIPS4_32 {
 // MIPS32r6 and MIPS64r6.
 class INSN_MIPS4_32_NOT_32R6_64R6 {
   list<Predicate> InsnPredicates = [HasMips4_32, NotMips32r6, NotMips64r6];
+  list<Predicate> EncodingPredicates = [HasStdEnc];
+}
+
+// The integer conditional moves, which the R5900 also has.
+class INSN_MIPS4_32_OR_R5900_NOT_32R6_64R6 {
+  list<Predicate> InsnPredicates = [HasMips4_32OrR5900, NotMips32r6,
+                                    NotMips64r6];
   list<Predicate> EncodingPredicates = [HasStdEnc];
 }
 

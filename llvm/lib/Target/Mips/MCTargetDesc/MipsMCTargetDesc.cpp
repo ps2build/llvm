@@ -140,6 +140,8 @@ StringRef MIPS_MC::selectMipsCPU(const Triple &TT, StringRef CPU) {
         CPU = "mips32r6";
       else
         CPU = "mips64r6";
+    } else if (TT.getSubArch() == llvm::Triple::MipsSubArch_r5900) {
+      CPU = "r5900";
     } else {
       if (TT.isMIPS32())
         CPU = "mips32";

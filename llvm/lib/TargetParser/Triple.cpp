@@ -185,6 +185,8 @@ StringRef Triple::getArchName(ArchType Kind, SubArchType SubArch) {
   case Triple::mips64el:
     if (SubArch == MipsSubArch_r6)
       return "mipsisa64r6el";
+    if (SubArch == MipsSubArch_r5900)
+      return "mips64r5900el";
     break;
   case Triple::aarch64:
     if (SubArch == AArch64SubArch_arm64ec)
@@ -631,7 +633,7 @@ Triple::ArchType Triple::parseArch(StringRef ArchName) {
                   "mipsn32r6"},
                  Triple::mips64)
           .Cases({"mips64el", "mipsn32el", "mipsisa64r6el", "mips64r6el",
-                  "mipsn32r6el"},
+                  "mipsn32r6el", "mips64r5900el"},
                  Triple::mips64el)
           .StartsWith("amdgpu", Triple::amdgpu)
           .Case("amdgcn", Triple::amdgpu)
@@ -736,6 +738,9 @@ Triple::SubArchType Triple::parseSubArch(StringRef SubArchName) {
   if (SubArchName.starts_with("mips") &&
       (SubArchName.ends_with("r6el") || SubArchName.ends_with("r6")))
     return Triple::MipsSubArch_r6;
+
+  if (SubArchName == "mips64r5900el")
+    return Triple::MipsSubArch_r5900;
 
   if (SubArchName == "powerpcspe")
     return Triple::PPCSubArch_spe;

@@ -1004,6 +1004,20 @@ TEST(TripleTest, ParsedIDs) {
   EXPECT_EQ(Triple::GNUABIN32, T.getEnvironment());
   EXPECT_EQ(Triple::MipsSubArch_r6, T.getSubArch());
 
+  T = Triple("mips64r5900el-ps2-elf");
+  EXPECT_EQ(Triple::mips64el, T.getArch());
+  EXPECT_EQ(Triple::MipsSubArch_r5900, T.getSubArch());
+  EXPECT_EQ(Triple::PS2, T.getVendor());
+  EXPECT_EQ(Triple::UnknownOS, T.getOS());
+  EXPECT_EQ(Triple::UnknownEnvironment, T.getEnvironment());
+  EXPECT_EQ(Triple::ELF, T.getObjectFormat());
+  EXPECT_TRUE(T.isPS2());
+  EXPECT_TRUE(T.isABIN32());
+  EXPECT_EQ("mips64r5900el-ps2-unknown-elf", T.normalize());
+  T = Triple("mips64el-unknown-elf");
+  EXPECT_FALSE(T.isPS2());
+  EXPECT_FALSE(T.isABIN32());
+
   T = Triple("mipsisa64r6-unknown-linux-gnuabin32");
   EXPECT_EQ(Triple::mips64, T.getArch());
   EXPECT_EQ(Triple::UnknownVendor, T.getVendor());

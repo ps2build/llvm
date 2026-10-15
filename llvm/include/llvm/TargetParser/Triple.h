@@ -168,6 +168,7 @@ public:
     KalimbaSubArch_v5,
 
     MipsSubArch_r6,
+    MipsSubArch_r5900,
 
     PPCSubArch_spe,
 
@@ -296,7 +297,8 @@ public:
     OpenEmbedded,
     Intel,
     Meta,
-    LastVendorType = Meta
+    PS2,
+    LastVendorType = PS2
   };
   enum OSType {
     UnknownOS,
@@ -1226,10 +1228,15 @@ public:
            getSubArch() == Triple::AArch64SubArch_arm64e_x1;
   }
 
+  /// Tests whether the target is the PS2 Emotion Engine.
+  bool isPS2() const {
+    return getArch() == Triple::mips64el && getVendor() == Triple::PS2;
+  }
+
   // Tests whether the target is N32.
   bool isABIN32() const {
     EnvironmentType Env = getEnvironment();
-    return Env == Triple::GNUABIN32 || Env == Triple::MuslABIN32;
+    return Env == Triple::GNUABIN32 || Env == Triple::MuslABIN32 || isPS2();
   }
 
   /// Tests whether the target is X32.

@@ -38,6 +38,9 @@ void mips::getMipsCPUAndABI(const ArgList &Args, const llvm::Triple &Triple,
     DefMips64CPU = "mips64r6";
   }
 
+  if (Triple.getSubArch() == llvm::Triple::MipsSubArch_r5900)
+    DefMips64CPU = "r5900";
+
   // MIPS3 is the default for mips64*-unknown-openbsd.
   if (Triple.isOSOpenBSD())
     DefMips64CPU = "mips3";

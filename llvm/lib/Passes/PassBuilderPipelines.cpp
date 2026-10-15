@@ -1473,6 +1473,12 @@ void PassBuilder::addVectorPasses(OptimizationLevel Level,
     // We do UnrollAndJam in a separate LPM to ensure it happens before unroll
     bool IsR5900 = TM && TM->getTargetCPU() == "r5900";
     if ((EnableUnrollAndJam || IsR5900) && PTO.LoopUnrolling) {
+      if (IsR5900 && Level == OptimizationLevel::O1) {
+        // O1 has no GVN; redundant loads/stores block the jam dependence check.
+        FPM.addPass(AggressiveInstCombinePass());
+        FPM.addPass(GVNPass());
+        FPM.addPass(InstCombinePass());
+      }
       FPM.addPass(createFunctionToLoopPassAdaptor(
           LoopUnrollAndJamPass(static_cast<int>(Level))));
       if (IsR5900) {

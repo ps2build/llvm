@@ -730,7 +730,9 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
   LPM1.addPass(LICMPass(PTO.LicmMssaOptCap, PTO.LicmMssaNoAccForPromotionCap,
                         /*AllowSpeculation=*/true));
   LPM1.addPass(
-      SimpleLoopUnswitchPass(/* NonTrivial */ Level == OptimizationLevel::O3));
+      SimpleLoopUnswitchPass(/* NonTrivial */ Level == OptimizationLevel::O3 ||
+                             (Level == OptimizationLevel::O2 && TM &&
+                              TM->getTargetCPU() == "r5900")));
   if (EnableLoopFlatten)
     LPM1.addPass(LoopFlattenPass());
 

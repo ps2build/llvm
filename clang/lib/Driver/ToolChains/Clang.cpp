@@ -1812,6 +1812,14 @@ void Clang::AddMIPSTargetArgs(const ArgList &Args,
   CmdArgs.push_back("-target-abi");
   CmdArgs.push_back(ABIName.data());
 
+  // The R5900's 16 KB data cache makes unrolling and jamming worthwhile at -O1.
+  if (CPUName == "r5900")
+    if (Arg *A = Args.getLastArg(options::OPT_O_Group))
+      if (A->getOption().matches(options::OPT_O) &&
+          StringRef(A->getValue()) == "1")
+        if (!Args.hasArg(options::OPT_fno_unroll_loops))
+          CmdArgs.push_back("-funroll-loops");
+
   mips::FloatABI ABI = mips::getMipsFloatABI(D, Args, Triple);
   if (ABI == mips::FloatABI::Soft) {
     // Floating point operations and argument passing are soft.

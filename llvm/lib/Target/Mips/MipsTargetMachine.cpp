@@ -36,11 +36,22 @@
 #include "llvm/IR/Function.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Passes/OptimizationLevel.h"
+#include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/Scalar/EarlyCSE.h"
+#include "llvm/Transforms/Scalar/GVN.h"
+#include "llvm/Transforms/Scalar/IndVarSimplify.h"
+#include "llvm/Transforms/Scalar/LoopPassManager.h"
+#include "llvm/Transforms/Scalar/LoopUnrollAndJamPass.h"
+#include "llvm/Transforms/Scalar/LoopUnrollPass.h"
+#include "llvm/Transforms/Scalar/SimpleLoopUnswitch.h"
+#include "llvm/Transforms/AggressiveInstCombine/AggressiveInstCombine.h"
 #include <optional>
 #include <string>
 
@@ -336,4 +347,38 @@ bool MipsPassConfig::addRegBankSelect() {
 bool MipsPassConfig::addGlobalInstructionSelect() {
   addPass(new InstructionSelectLegacy(getOptLevel()));
   return false;
+}
+
+void MipsTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
+  if (getTargetCPU() != "r5900")
+    return;
+
+  // The R5900 has a 16 KB data cache, so fusing several outer iterations over
+  // the same data pays off: unswitch invariant conditions, then unroll and jam.
+  PB.registerScalarOptimizerLateEPCallback(
+      [](FunctionPassManager &FPM, OptimizationLevel Level) {
+        if (Level == OptimizationLevel::O0)
+          return;
+        if (Level == OptimizationLevel::O2)
+          FPM.addPass(createFunctionToLoopPassAdaptor(
+              SimpleLoopUnswitchPass(/*NonTrivial=*/true),
+              /*UseMemorySSA=*/true));
+        if (Level == OptimizationLevel::O1) {
+          // O1 lacks these; they let the jam see through sqrtf and
+          // redundant loads.
+          FPM.addPass(AggressiveInstCombinePass());
+          FPM.addPass(GVNPass());
+          FPM.addPass(InstCombinePass());
+        }
+        FPM.addPass(createFunctionToLoopPassAdaptor(
+            LoopUnrollAndJamPass(static_cast<int>(Level))));
+        // The jam clones the inner induction variable; merge it so the
+        // copies' loads and stores can be forwarded.
+        FPM.addPass(InstCombinePass());
+        FPM.addPass(createFunctionToLoopPassAdaptor(IndVarSimplifyPass()));
+        FPM.addPass(EarlyCSEPass(true));
+        FPM.addPass(GVNPass());
+        if (Level == OptimizationLevel::O1)
+          FPM.addPass(LoopUnrollPass(LoopUnrollOptions(static_cast<int>(Level))));
+      });
 }

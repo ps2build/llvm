@@ -73,6 +73,7 @@ add_llvm_target(MipsCodeGen
   LINK_COMPONENTS
   Analysis
   AsmPrinter
+  AggressiveInstCombine
   CodeGen
   CodeGenTypes
   Core
@@ -80,6 +81,9 @@ add_llvm_target(MipsCodeGen
   MC
   MipsDesc
   MipsInfo
+  Passes
+  ScalarOpts
+  InstCombine
   SelectionDAG
   Support
   Target

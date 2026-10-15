@@ -730,9 +730,7 @@ PassBuilder::buildFunctionSimplificationPipeline(OptimizationLevel Level,
   LPM1.addPass(LICMPass(PTO.LicmMssaOptCap, PTO.LicmMssaNoAccForPromotionCap,
                         /*AllowSpeculation=*/true));
   LPM1.addPass(
-      SimpleLoopUnswitchPass(/* NonTrivial */ Level == OptimizationLevel::O3 ||
-                             (Level == OptimizationLevel::O2 && TM &&
-                              TM->getTargetCPU() == "r5900")));
+      SimpleLoopUnswitchPass(/* NonTrivial */ Level == OptimizationLevel::O3));
   if (EnableLoopFlatten)
     LPM1.addPass(LoopFlattenPass());
 
@@ -1471,24 +1469,9 @@ void PassBuilder::addVectorPasses(OptimizationLevel Level,
     // combiner for cleanup here so that the unrolling and LICM can be pipelined
     // across the loop nests.
     // We do UnrollAndJam in a separate LPM to ensure it happens before unroll
-    bool IsR5900 = TM && TM->getTargetCPU() == "r5900";
-    if ((EnableUnrollAndJam || IsR5900) && PTO.LoopUnrolling) {
-      if (IsR5900 && Level == OptimizationLevel::O1) {
-        // O1 has no GVN; redundant loads/stores block the jam dependence check.
-        FPM.addPass(AggressiveInstCombinePass());
-        FPM.addPass(GVNPass());
-        FPM.addPass(InstCombinePass());
-      }
+    if (EnableUnrollAndJam && PTO.LoopUnrolling) {
       FPM.addPass(createFunctionToLoopPassAdaptor(
           LoopUnrollAndJamPass(static_cast<int>(Level))));
-      if (IsR5900) {
-        // The jam clones the inner induction variable; merge it so the
-        // copies' loads and stores can be forwarded.
-        FPM.addPass(InstCombinePass());
-        FPM.addPass(createFunctionToLoopPassAdaptor(IndVarSimplifyPass()));
-        FPM.addPass(EarlyCSEPass(true));
-        FPM.addPass(GVNPass());
-      }
     }
     FPM.addPass(LoopUnrollPass(LoopUnrollOptions(
         static_cast<int>(Level), /*OnlyWhenForced=*/!PTO.LoopUnrolling,

@@ -1935,9 +1935,7 @@ bool CompilerInvocation::ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args,
     Opts.NoBuiltinFuncs = LangOpts->NoBuiltinFuncs;
   Opts.UnrollLoops =
       Args.hasFlag(OPT_funroll_loops, OPT_fno_unroll_loops,
-                   (Opts.OptimizationLevel > 1 ||
-                    (Opts.OptimizationLevel == 1 &&
-                     Args.getLastArgValue(OPT_target_cpu) == "r5900")));
+                   (Opts.OptimizationLevel > 1));
   // Match the LLVM pipeline default (PipelineTuningOptions::LoopInterchange),
   // which enables the pass whenever the optimization pipeline runs.
   Opts.InterchangeLoops =

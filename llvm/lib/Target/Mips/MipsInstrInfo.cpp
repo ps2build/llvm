@@ -22,6 +22,7 @@
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineOperand.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetOpcodes.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/DebugInfoMetadata.h"
@@ -602,6 +603,18 @@ bool MipsInstrInfo::SafeInForbiddenSlot(const MachineInstr &MI) const {
     return false;
 
   return (MI.getDesc().TSFlags & MipsII::IsCTI) == 0;
+}
+
+// The R5900 takes about six cycles from c.cond.s to bc1t/bc1f; FP arithmetic
+// left ahead of the branch runs in that gap instead of after it.
+bool MipsInstrInfo::shouldSink(const MachineInstr &MI) const {
+  if (!Subtarget.isR5900() || MI.mayLoadOrStore() || MI.getNumDefs() != 1)
+    return true;
+  const MachineOperand &Def = MI.getOperand(0);
+  if (!Def.isReg() || !Def.getReg().isVirtual())
+    return true;
+  const MachineRegisterInfo &MRI = MI.getMF()->getRegInfo();
+  return MRI.getRegClass(Def.getReg()) != &Mips::FGR32RegClass;
 }
 
 bool MipsInstrInfo::SafeInFPUDelaySlot(const MachineInstr &MIInSlot,

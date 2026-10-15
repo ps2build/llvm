@@ -99,6 +99,8 @@ public:
   bool SafeInForbiddenSlot(const MachineInstr &MI) const;
 
   /// Predicate to determine if an instruction can go in an FPU delay slot.
+  bool shouldSink(const MachineInstr &MI) const override;
+
   bool SafeInFPUDelaySlot(const MachineInstr &MIInSlot,
                           const MachineInstr &FPUMI) const;
 

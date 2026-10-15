@@ -216,6 +216,8 @@ TargetTransformInfo::UnrollingPreferences llvm::gatherUnrollingPreferences(
   UP.UpperBound = false;
   UP.UnrollAndJam = false;
   UP.UnrollAndJamInnerLoopThreshold = 60;
+  UP.UnrollAndJamMultiBlock = false;
+  UP.UnrollAndJamPreferredCount = 0;
   UP.MaxIterationsCountToAnalyze = UnrollMaxIterationsCountToAnalyze;
   UP.SCEVExpansionBudget = SCEVCheapExpansionBudget;
   UP.RuntimeUnrollMultiExit = false;

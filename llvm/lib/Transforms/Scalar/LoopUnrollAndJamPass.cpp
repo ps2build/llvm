@@ -160,6 +160,9 @@ static unsigned computeUnrollAndJamCount(
                          /*MaxTripCount*/ 0, /*MaxOrZero*/ false,
                          OuterTripMultiple, OuterUCE, UP, PP);
 
+  if (UP.UnrollAndJamPreferredCount > Count && UP.AllowRemainder)
+    Count = UP.UnrollAndJamPreferredCount;
+
   // Override with any explicit count from the "unroll-and-jam-count" option.
   bool UserUnrollCount = UnrollAndJamCount.getNumOccurrences() > 0;
   if (UserUnrollCount) {
@@ -232,7 +235,7 @@ static unsigned computeUnrollAndJamCount(
 
   // Check for situations where UnJ is likely to be unprofitable. Including
   // subloops with more than 1 block.
-  if (SubLoop->getBlocks().size() != 1) {
+  if (SubLoop->getBlocks().size() != 1 && !UP.UnrollAndJamMultiBlock) {
     LLVM_DEBUG(
         dbgs() << "Won't unroll-and-jam; More than one inner loop block\n");
     return 0;

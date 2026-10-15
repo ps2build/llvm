@@ -730,6 +730,10 @@ public:
     /// This value is used in the same manner to limit the size of the inner
     /// loop.
     unsigned UnrollAndJamInnerLoopThreshold;
+    /// Allow unroll and jam of an inner loop that has more than one block.
+    bool UnrollAndJamMultiBlock;
+  /// Preferred unroll and jam count when the generic size estimate gives less.
+  unsigned UnrollAndJamPreferredCount;
     /// Don't allow loop unrolling to simulate more than this number of
     /// iterations when checking full unroll profitability
     unsigned MaxIterationsCountToAnalyze;

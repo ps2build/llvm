@@ -1469,9 +1469,18 @@ void PassBuilder::addVectorPasses(OptimizationLevel Level,
     // combiner for cleanup here so that the unrolling and LICM can be pipelined
     // across the loop nests.
     // We do UnrollAndJam in a separate LPM to ensure it happens before unroll
-    if (EnableUnrollAndJam && PTO.LoopUnrolling) {
+    bool IsR5900 = TM && TM->getTargetCPU() == "r5900";
+    if ((EnableUnrollAndJam || IsR5900) && PTO.LoopUnrolling) {
       FPM.addPass(createFunctionToLoopPassAdaptor(
           LoopUnrollAndJamPass(static_cast<int>(Level))));
+      if (IsR5900) {
+        // The jam clones the inner induction variable; merge it so the
+        // copies' loads and stores can be forwarded.
+        FPM.addPass(InstCombinePass());
+        FPM.addPass(createFunctionToLoopPassAdaptor(IndVarSimplifyPass()));
+        FPM.addPass(EarlyCSEPass(true));
+        FPM.addPass(GVNPass());
+      }
     }
     FPM.addPass(LoopUnrollPass(LoopUnrollOptions(
         static_cast<int>(Level), /*OnlyWhenForced=*/!PTO.LoopUnrolling,

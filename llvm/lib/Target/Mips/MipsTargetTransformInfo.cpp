@@ -25,6 +25,10 @@ void MipsTTIImpl::getUnrollingPreferences(
   UP.Partial = true;
   UP.Runtime = true;
   UP.PartialThreshold = 64;
+  UP.UnrollAndJam = true;
+  UP.UnrollAndJamMultiBlock = true;
+  UP.UnrollAndJamInnerLoopThreshold = 400;
+  UP.UnrollAndJamPreferredCount = 6;
 }
 
 bool MipsTTIImpl::isLSRCostLess(const TargetTransformInfo::LSRCost &C1,

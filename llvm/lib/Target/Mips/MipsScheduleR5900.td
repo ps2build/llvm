@@ -75,11 +75,13 @@ def : InstRW<[R5900WriteALU], (instregex
   "^(ADD|ADDi|ADDiu|ADDu|AND|ANDi|NOR|OR|ORi|XOR|XORi|SUB|SUBu|SLL|SLLV|SRA|"
   "SRAV|SRL|SRLV|SLT|SLTi|SLTiu|SLTu|LUi|DADDiu|DADDu|DSUBu|DSLL|DSLL32|"
   "DSLLV|DSRA|DSRA32|DSRAV|DSRL|DSRL32|DSRLV|SLL64_32|SLL64_64|SEB|SEH|"
-  "MOVN_I_I|MOVZ_I_I|MOVN_I64_I|MOVZ_I64_I|NOP|COPY|LEA_ADDiu)$")>;
+  "MOVN_I_I|MOVZ_I_I|MOVN_I64_I|MOVZ_I64_I|NOP|COPY|LEA_ADDiu|"
+  "AND64|ANDi64|OR64|ORi64|XOR64|XORi64|NOR64|LUi64|SLT64|SLTi64|SLTu64|"
+  "SLTiu64|DSLL64_32|TEQ|TNE)$")>;
 
 def : InstRW<[R5900WriteLS], (instregex
   "^(LB|LB64|LBu|LBu64|LD|LH|LH64|LHu|LHu64|LW|LW64|LWu|LQ|SB|SB64|SD|SH|SH64|"
-  "SW|SW64|SQ)$")>;
+  "SW|SW64|SQ|LWL|LWR|LWL64|LWR64|LDL|LDR|SWL|SWR|SWL64|SWR64|SDL|SDR)$")>;
 
 def : InstRW<[R5900WriteFPLS], (instregex "^(LWC1|SWC1)$")>;
 
@@ -93,13 +95,15 @@ def : InstRW<[R5900WriteMTC1], (instregex "^MTC1$")>;
 def : InstRW<[R5900WriteMFC1], (instregex "^MFC1$")>;
 
 def : InstRW<[R5900WriteBR], (instregex
-  "^(BEQ|BEQ64|BNE|BNE64|BGEZ|BGEZ64|BGTZ|BLEZ|BLTZ|J|JR|JAL|JALR|JALR64|"
+  "^(BEQ|BEQ64|BNE|BNE64|BGEZ|BGEZ64|BGTZ|BGTZ64|BLEZ|BLEZ64|BLTZ|BLTZ64|J|JR|"
+  "JAL|JALR|JALR64|"
   "BC1T|BC1F|RetRA|PseudoReturn|PseudoReturn64|PseudoIndirectBranch)$")>;
 
 def : InstRW<[R5900WriteALU0], (instregex
   "^(MFHI|MFLO|MTHI|MTLO|PseudoMFHI|PseudoMFLO|PseudoMTLOHI)$")>;
 def : InstRW<[R5900WriteIMul], (instregex
   "^(MULT|MULTu|MUL|MUL_R5900|PseudoMULT|PseudoMULTu)$")>;
-def : InstRW<[R5900WriteIDiv], (instregex "^(DIV|DIVu|PseudoSDIV|PseudoUDIV)$")>;
+def : InstRW<[R5900WriteIDiv], (instregex
+  "^(DIV|DIVu|SDIV|UDIV|PseudoSDIV|PseudoUDIV)$")>;
 
 }

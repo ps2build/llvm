@@ -23,3 +23,16 @@ on top. After a rebase:
 
     git push ps2-fork main            # keep main in sync with upstream
     git push --force ps2-fork r5900-ee
+
+## What belongs in the fork
+
+Only changes specific to the PS2 CPUs:
+
+- Target code gated on the R5900 or R3000A: subtarget features, `isR5900()`/`isR3000A()`, scheduling models,
+  instruction definitions and selection.
+- Runtime code gated on `__ps2sdk__` or `_MIPS_ARCH_R5900`.
+- Hidden `cl::opt` switches that default to off.
+
+Not in the fork: edits to generic passes or `TargetTransformInfo.h`, pass-pipeline callbacks that add
+optimisation passes, clang driver changes to what `-O1`/`-O2` mean, and thresholds or counts tuned to a benchmark.
+A speed gap that a hardware fact (latency, cost, instruction) cannot close is documented as an exception instead.

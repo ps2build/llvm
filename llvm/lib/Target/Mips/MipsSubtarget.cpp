@@ -243,8 +243,12 @@ void MipsSubtarget::getCriticalPathRCs(RegClassVector &CriticalPathRCs) const {
 }
 
 CodeGenOptLevel MipsSubtarget::getOptLevelToEnablePostRAScheduler() const {
-  return CodeGenOptLevel::Aggressive;
+  // The R5900 pairs a store only with a non-store, so store order pays at -O2.
+  return IsR5900 ? CodeGenOptLevel::Default : CodeGenOptLevel::Aggressive;
 }
+
+// Lets the schedulers move the R5900's independent stores apart.
+bool MipsSubtarget::useAA() const { return IsR5900; }
 
 MipsSubtarget &
 MipsSubtarget::initializeSubtargetDependencies(StringRef CPU, StringRef FS,

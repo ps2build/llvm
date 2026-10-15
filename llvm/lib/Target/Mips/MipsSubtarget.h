@@ -282,6 +282,7 @@ public:
   }
   void getCriticalPathRCs(RegClassVector &CriticalPathRCs) const override;
   CodeGenOptLevel getOptLevelToEnablePostRAScheduler() const override;
+  bool useAA() const override;
 
   bool isABI_N64() const;
   bool isABI_N32() const;

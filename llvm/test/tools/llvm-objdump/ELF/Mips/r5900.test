@@ -1,0 +1,14 @@
+## An object with EF_MIPS_MACH_5900 disassembles with the R5900 instructions
+## enabled, without --mcpu.
+
+# RUN: llvm-mc -filetype=obj -triple=mips64el-unknown-elf -mcpu=r5900 -target-abi=n32 %s -o %t.o
+# RUN: llvm-readelf -h %t.o | FileCheck %s --check-prefix=FLAGS
+# RUN: llvm-objdump -d --no-show-raw-insn %t.o | FileCheck %s
+
+# FLAGS: Flags: {{.*}} abi2, 5900, mips3
+
+# CHECK:      max.s $f1, $f2, $f3
+# CHECK-NEXT: adda.s $f2, $f3
+
+max.s $f1, $f2, $f3
+adda.s $f2, $f3

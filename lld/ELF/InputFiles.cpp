@@ -1812,9 +1812,10 @@ template <class ELFT> void SharedFile::parse() {
 }
 
 static ELFKind getBitcodeELFKind(const Triple &t) {
+  bool is64 = t.isArch64Bit() && !t.isABIN32();
   if (t.isLittleEndian())
-    return t.isArch64Bit() ? ELF64LEKind : ELF32LEKind;
-  return t.isArch64Bit() ? ELF64BEKind : ELF32BEKind;
+    return is64 ? ELF64LEKind : ELF32LEKind;
+  return is64 ? ELF64BEKind : ELF32BEKind;
 }
 
 static uint16_t getBitcodeMachineKind(Ctx &ctx, StringRef path,

@@ -15,7 +15,9 @@
 #include "Target.h"
 
 #include "llvm/BinaryFormat/ELF.h"
+#include "llvm/LTO/LTO.h"
 #include "llvm/Support/MipsABIFlags.h"
+#include "llvm/TargetParser/Triple.h"
 
 using namespace llvm;
 using namespace llvm::object;
@@ -361,6 +363,8 @@ uint8_t elf::getMipsFpAbiFlag(Ctx &ctx, InputFile *file, uint8_t oldFlag,
 template <class ELFT> static bool isN32Abi(const InputFile &f) {
   if (auto *ef = dyn_cast<ELFFileBase>(&f))
     return ef->template getObj<ELFT>().getHeader().e_flags & EF_MIPS_ABI2;
+  if (auto *bf = dyn_cast<BitcodeFile>(&f))
+    return Triple(bf->obj->getTargetTriple()).isABIN32();
   return false;
 }
 

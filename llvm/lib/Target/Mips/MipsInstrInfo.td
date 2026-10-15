@@ -260,6 +260,8 @@ def IsR5900 : Predicate<"Subtarget->isR5900()">,
               AssemblerPredicate<(all_of FeatureR5900)>;
 def NotR5900 : Predicate<"!Subtarget->isR5900()">,
                AssemblerPredicate<(all_of (not FeatureR5900))>;
+def IsR3000A : Predicate<"Subtarget->isR3000A()">,
+               AssemblerPredicate<(all_of FeatureR3000A)>;
 def HasCRC   : Predicate<"Subtarget->hasCRC()">,
                AssemblerPredicate<(all_of FeatureCRC)>;
 def HasVirt  : Predicate<"Subtarget->hasVirt()">,
@@ -298,8 +300,8 @@ class SYM_64 { list<Predicate> SYMPredicates = [IsSym64]; }
 class ISA_MIPS1 {
   list<Predicate> EncodingPredicates = [HasStdEnc];
 }
-class ISA_MIPS1_MIPS2 {
-  list<Predicate> InsnPredicates = [NotMips3, NotMips4_32];
+class ISA_R3000A {
+  list<Predicate> InsnPredicates = [IsR3000A];
   list<Predicate> EncodingPredicates = [HasStdEnc];
 }
 class ISA_MIPS1_NOT_MIPS3 {
@@ -2556,7 +2558,7 @@ let AdditionalPredicates = [NotInMicroMips] in {
   def TLBWI : MMRel, TLB<"tlbwi">, COP0_TLB_FM<0x02>, ISA_MIPS1;
   def TLBWR : MMRel, TLB<"tlbwr">, COP0_TLB_FM<0x06>, ISA_MIPS1;
   let DecoderNamespace = "MipsRfe" in
-  def RFE : TLB<"rfe">, COP0_TLB_FM<0x10>, ISA_MIPS1_MIPS2;
+  def RFE : TLB<"rfe">, COP0_TLB_FM<0x10>, ISA_R3000A;
 }
 class CacheOp<string instr_asm, Operand MemOpnd> :
     InstSE<(outs), (ins  MemOpnd:$addr, uimm5:$hint),

@@ -50,3 +50,12 @@ bool MipsTTIImpl::isLSRCostLess(const TargetTransformInfo::LSRCost &C1,
          std::tie(C2.Insns, C2NumRegs, C2.AddRecCost, C2.NumIVMuls,
                   C2.NumBaseAdds, C2.ScaleCost, C2.ImmCost, C2.SetupCost);
 }
+
+// The IOP has very little RAM, so under -Os inlining must not grow code: bring
+// the -Os threshold (50) down to the -Oz one (5). The unsigned wraparound is
+// added to the int threshold by the inliner.
+unsigned MipsTTIImpl::adjustInliningThreshold(const CallBase *CB) const {
+  if (ST->isR3000A() && CB->getCaller()->hasOptSize())
+    return static_cast<unsigned>(-45);
+  return 0;
+}

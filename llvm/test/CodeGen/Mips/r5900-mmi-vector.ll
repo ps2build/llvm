@@ -49,12 +49,13 @@ define void @nor_d(ptr align 16 %a, ptr align 16 %b, ptr align 16 %c) {
   ret void
 }
 
-; Unaligned vectors must not use lq/sq directly.
+; Unaligned vectors use ldl/ldr and sdl/sdr on each half, joined by pcpyld/pcpyud.
 ; CHECK-LABEL: unaligned:
 ; CHECK: ldl
-; CHECK: ldr
+; CHECK: ldl
+; CHECK: pcpyld
+; CHECK: pcpyud
 ; CHECK: sdl
-; CHECK: sdr
 define void @unaligned(ptr %a, ptr %c) {
   %x = load <4 x i32>, ptr %a, align 1
   store <4 x i32> %x, ptr %c, align 1

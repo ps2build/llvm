@@ -533,6 +533,21 @@ bool MipsSEInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   case Mips::LQ_128:
     expandMMI128(MBB, MI, Mips::LQ);
     break;
+  case Mips::PCPYLD_V:
+    expandMMI128(MBB, MI, Mips::P_PCPYLD);
+    break;
+  case Mips::PLO_V: {
+    const TargetRegisterInfo *TRI = &getRegisterInfo();
+    const MachineOperand &Src = MI.getOperand(1);
+    BuildMI(MBB, MI, MI.getDebugLoc(), get(Mips::P_POR), MI.getOperand(0).getReg())
+        .addReg(TRI->getSubReg(Src.getReg(), Mips::sub_64),
+                getKillRegState(Src.isKill()))
+        .addReg(Mips::ZERO_64);
+    break;
+  }
+  case Mips::PCPYUD_V:
+    expandMMI128(MBB, MI, Mips::P_PCPYUD);
+    break;
   case Mips::SQ_128:
     expandMMI128(MBB, MI, Mips::SQ);
     break;

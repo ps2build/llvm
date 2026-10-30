@@ -372,6 +372,7 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
                           ISD::POISON, ISD::AND, ISD::OR, ISD::XOR},
                          VT, Legal);
       setOperationAction(ISD::BUILD_VECTOR, VT, Custom);
+      setOperationAction({ISD::LOAD, ISD::STORE}, VT, Custom);
       if (VT != MVT::v2i64)
         setOperationAction({ISD::ADD, ISD::SUB}, VT, Legal);
     }
@@ -1344,6 +1345,30 @@ getOpndList(SmallVectorImpl<SDValue> &Ops,
 SDValue MipsSETargetLowering::lowerLOAD(SDValue Op, SelectionDAG &DAG) const {
   LoadSDNode &Nd = *cast<LoadSDNode>(Op);
 
+  if (Subtarget.isR5900() && !Subtarget.hasMSA() &&
+      Nd.getValueType(0).isFixedLengthVector() &&
+      Nd.getValueType(0).getSizeInBits() == 128) {
+    if (Nd.getAlign() >= Align(16))
+      return Op;
+
+    // Two unaligned 64-bit loads (ldl/ldr) joined with pcpyld.
+    SDLoc DL(Op);
+    SDValue Ptr = Nd.getBasePtr(), Chain = Nd.getChain();
+    MachineMemOperand::Flags Flags = Nd.getMemOperand()->getFlags();
+    SDValue Lo = DAG.getLoad(MVT::i64, DL, Chain, Ptr, Nd.getPointerInfo(),
+                             Nd.getAlign(), Flags);
+    SDValue Hi = DAG.getLoad(
+        MVT::i64, DL, Chain,
+        DAG.getMemBasePlusOffset(Ptr, TypeSize::getFixed(8), DL),
+        Nd.getPointerInfo().getWithOffset(8), commonAlignment(Nd.getAlign(), 8),
+        Flags);
+    SDValue Pack = DAG.getNode(MipsISD::MMIPack, DL, MVT::v2i64, Hi, Lo);
+    SDValue Res = DAG.getNode(ISD::BITCAST, DL, Nd.getValueType(0), Pack);
+    SDValue Chains = DAG.getNode(ISD::TokenFactor, DL, MVT::Other,
+                                 Lo.getValue(1), Hi.getValue(1));
+    return DAG.getMergeValues({Res, Chains}, DL);
+  }
+
   if (Nd.getMemoryVT() != MVT::f64 || (!NoDPLoadStore && Subtarget.hasMips2()))
     return MipsTargetLowering::lowerLOAD(Op, DAG);
 
@@ -1378,6 +1403,28 @@ SDValue MipsSETargetLowering::lowerLOAD(SDValue Op, SelectionDAG &DAG) const {
 
 SDValue MipsSETargetLowering::lowerSTORE(SDValue Op, SelectionDAG &DAG) const {
   StoreSDNode &Nd = *cast<StoreSDNode>(Op);
+
+  if (Subtarget.isR5900() && !Subtarget.hasMSA() &&
+      Nd.getValue().getValueType().isFixedLengthVector() &&
+      Nd.getValue().getValueType().getSizeInBits() == 128) {
+    if (Nd.getAlign() >= Align(16))
+      return Op;
+
+    // pcpyud extracts the high half; two unaligned 64-bit stores (sdl/sdr).
+    SDLoc DL(Op);
+    SDValue Ptr = Nd.getBasePtr(), Chain = Nd.getChain();
+    MachineMemOperand::Flags Flags = Nd.getMemOperand()->getFlags();
+    SDValue V = DAG.getNode(ISD::BITCAST, DL, MVT::v2i64, Nd.getValue());
+    SDValue Lo = DAG.getNode(MipsISD::MMILo, DL, MVT::i64, V);
+    SDValue Hi = DAG.getNode(MipsISD::MMIHi, DL, MVT::i64, V);
+    SDValue S0 = DAG.getStore(Chain, DL, Lo, Ptr, Nd.getPointerInfo(),
+                              Nd.getAlign(), Flags, Nd.getAAInfo());
+    SDValue S1 = DAG.getStore(
+        Chain, DL, Hi, DAG.getMemBasePlusOffset(Ptr, TypeSize::getFixed(8), DL),
+        Nd.getPointerInfo().getWithOffset(8), commonAlignment(Nd.getAlign(), 8),
+        Flags, Nd.getAAInfo());
+    return DAG.getNode(ISD::TokenFactor, DL, MVT::Other, S0, S1);
+  }
 
   if (Nd.getMemoryVT() != MVT::f64 || (!NoDPLoadStore && Subtarget.hasMips2()))
     return MipsTargetLowering::lowerSTORE(Op, DAG);

@@ -1180,6 +1180,19 @@ let mayStore = 1 in
 def SQ_128 : PseudoSE<(outs), (ins GPR128:$rt, mem:$addr), []>;
 }
 
+def SDT_MipsMMIPack : SDTypeProfile<1, 2, [SDTCisVT<0, v2i64>,
+                                           SDTCisVT<1, i64>, SDTCisSameAs<1, 2>]>;
+def SDT_MipsMMIPart : SDTypeProfile<1, 1, [SDTCisVT<0, i64>, SDTCisVT<1, v2i64>]>;
+def MipsMMIPack : SDNode<"MipsISD::MMIPack", SDT_MipsMMIPack>;
+def MipsMMILo : SDNode<"MipsISD::MMILo", SDT_MipsMMIPart>;
+def MipsMMIHi : SDNode<"MipsISD::MMIHi", SDT_MipsMMIPart>;
+
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1 in {
+def PCPYLD_V : PseudoSE<(outs GPR128:$rd), (ins GPR64:$rs, GPR64:$rt), []>;
+def PLO_V : PseudoSE<(outs GPR64:$rd), (ins GPR128:$rs), []>;
+def PCPYUD_V : PseudoSE<(outs GPR64:$rd), (ins GPR128:$rs, GPR128:$rt), []>;
+}
+
 def aligned16load : PatFrag<(ops node:$ptr), (load node:$ptr), [{
   return cast<LoadSDNode>(N)->getAlign() >= Align(16);
 }]>;
@@ -1213,6 +1226,13 @@ foreach VT = [v16i8, v8i16, v4i32, v2i64] in {
   def : MipsPat<(VT immAllOnesV),
                 (COPY_TO_REGCLASS (PNOR_128 GPR128_0, GPR128_0), GPR128)>;
 }
+def : MipsPat<(MipsMMIPack GPR64:$hi, GPR64:$lo),
+              (COPY_TO_REGCLASS (PCPYLD_V GPR64:$hi, GPR64:$lo), GPR128)>;
+def : MipsPat<(MipsMMIHi v2i64:$v),
+              (PCPYUD_V (COPY_TO_REGCLASS v2i64:$v, GPR128),
+                        (COPY_TO_REGCLASS v2i64:$v, GPR128))>;
+def : MipsPat<(MipsMMILo v2i64:$v),
+              (PLO_V (COPY_TO_REGCLASS v2i64:$v, GPR128))>;
 def : MMI128Bin<add, v16i8, PADDB_128>;
 def : MMI128Bin<add, v8i16, PADDH_128>;
 def : MMI128Bin<add, v4i32, PADDW_128>;

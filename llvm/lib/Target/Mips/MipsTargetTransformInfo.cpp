@@ -57,11 +57,23 @@ void MipsTTIImpl::getUnrollingPreferences(
     Loop *L, ScalarEvolution &SE, TTI::UnrollingPreferences &UP,
     OptimizationRemarkEmitter *ORE) const {
   BaseT::getUnrollingPreferences(L, SE, UP, ORE);
-  if (!ST->isR5900())
+  if (!ST->isR5900() || L->getNumBlocks() != 1)
+    return;
+  // Rig timings: loops with a load of 4 bytes or more gain from unrolling;
+  // byte loops are short and store-only loops lose to the scheduler.
+  const DataLayout &DL = L->getHeader()->getDataLayout();
+  bool HasLoad = false;
+  for (const Instruction &I : *L->getHeader())
+    if (const auto *LI = dyn_cast<LoadInst>(&I)) {
+      if (DL.getTypeStoreSize(LI->getType()) < 4)
+        return;
+      HasLoad = true;
+    }
+  if (!HasLoad)
     return;
   UP.Partial = true;
   UP.Runtime = true;
-  UP.PartialThreshold = 64;
+  UP.PartialThreshold = 120;
 }
 
 InstructionCost MipsTTIImpl::getArithmeticInstrCost(

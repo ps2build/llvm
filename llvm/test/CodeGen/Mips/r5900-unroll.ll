@@ -24,3 +24,40 @@ loop:
 exit:
   ret void
 }
+
+; Loops without a load, and loops over bytes, are usually short; leave them rolled.
+; R5900-LABEL: @fill(
+; R5900:       store i32
+; R5900-NOT:   store i32
+define void @fill(ptr %p, i32 %n) {
+entry:
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %inc, %loop ]
+  %a = getelementptr i32, ptr %p, i32 %i
+  store i32 7, ptr %a
+  %inc = add i32 %i, 1
+  %c = icmp ult i32 %inc, %n
+  br i1 %c, label %loop, label %exit
+exit:
+  ret void
+}
+
+; R5900-LABEL: @copy_bytes(
+; R5900:       load i8
+; R5900-NOT:   load i8
+define void @copy_bytes(ptr %d, ptr %s, i32 %n) {
+entry:
+  br label %loop
+loop:
+  %i = phi i32 [ 0, %entry ], [ %inc, %loop ]
+  %sa = getelementptr i8, ptr %s, i32 %i
+  %da = getelementptr i8, ptr %d, i32 %i
+  %v = load i8, ptr %sa
+  store i8 %v, ptr %da
+  %inc = add i32 %i, 1
+  %c = icmp ult i32 %inc, %n
+  br i1 %c, label %loop, label %exit
+exit:
+  ret void
+}

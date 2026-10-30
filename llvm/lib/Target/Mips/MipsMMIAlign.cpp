@@ -114,20 +114,20 @@ bool alignLoop(Loop &L, ScalarEvolution &SE, DominatorTree &DT, LoopInfo &LI,
 
   BasicBlock *Check = SplitEdge(Pred, Ph, &DT, &LI);
   Check->setName("mmi.align.check");
-  Check->getTerminator()->eraseFromParent();
+  Instruction *OldTerm = Check->getTerminator();
 
-  IRBuilder<> B(Check);
+  IRBuilder<> B(OldTerm);
   Type *IntPtrTy = DL.getIntPtrType(Check->getContext());
   Value *Bits = nullptr;
   for (const SCEV *S : Starts) {
-    Value *P = Exp.expandCodeFor(S, nullptr, Check->end());
-    B.SetInsertPoint(Check);
+    Value *P = Exp.expandCodeFor(S, nullptr, OldTerm->getIterator());
     Value *V = B.CreatePtrToInt(P, IntPtrTy);
     Bits = Bits ? B.CreateOr(Bits, V) : V;
   }
   Value *Low = B.CreateAnd(Bits, ConstantInt::get(IntPtrTy, 15));
   Value *Misaligned = B.CreateICmpNE(Low, ConstantInt::get(IntPtrTy, 0));
   B.CreateCondBr(NeverAligned ? B.getTrue() : Misaligned, Scalar, Ph);
+  OldTerm->eraseFromParent();
 
   for (PHINode &Phi : Scalar->phis())
     Phi.addIncoming(Phi.getIncomingValueForBlock(Pred), Check);

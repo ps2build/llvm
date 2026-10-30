@@ -15,6 +15,7 @@
 #include "MCTargetDesc/MipsMCTargetDesc.h"
 #include "Mips.h"
 #include "Mips16ISelDAGToDAG.h"
+#include "MipsMMIAlign.h"
 #include "MipsMachineFunction.h"
 #include "MipsSEISelDAGToDAG.h"
 #include "MipsSubtarget.h"
@@ -36,6 +37,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/MC/TargetRegistry.h"
+#include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
@@ -348,4 +350,19 @@ bool MipsPassConfig::addRegBankSelect() {
 bool MipsPassConfig::addGlobalInstructionSelect() {
   addPass(new InstructionSelectLegacy(getOptLevel()));
   return false;
+}
+
+void MipsTargetMachine::registerPassBuilderCallbacks(PassBuilder &PB) {
+  PB.registerPipelineParsingCallback(
+      [this](StringRef Name, FunctionPassManager &FPM,
+             ArrayRef<PassBuilder::PipelineElement>) {
+        if (Name != "mips-mmi-align")
+          return false;
+        FPM.addPass(MipsMMIAlignPass(*this));
+        return true;
+      });
+  PB.registerVectorizerEndEPCallback(
+      [this](FunctionPassManager &FPM, OptimizationLevel) {
+        FPM.addPass(MipsMMIAlignPass(*this));
+      });
 }

@@ -62,13 +62,13 @@ def R5900WriteFPCmp : SchedWriteRes<[R5900FPU]> { let Latency = 6; }
 def R5900WriteMTC1 : SchedWriteRes<[R5900FPU, R5900LS]> { let Latency = 3; }
 def R5900WriteMFC1 : SchedWriteRes<[R5900FPU, R5900LS]> { let Latency = 2; }
 
-def R5900WriteIMul : SchedWriteRes<[R5900ALU0]> {
+def R5900WriteIMul : SchedWriteRes<[R5900ALU0, R5900ALU1]> {
   let Latency = 4;
-  let ReleaseAtCycles = [2];
+  let ReleaseAtCycles = [2, 1];
 }
-def R5900WriteIDiv : SchedWriteRes<[R5900ALU0]> {
+def R5900WriteIDiv : SchedWriteRes<[R5900ALU0, R5900ALU1]> {
   let Latency = 37;
-  let ReleaseAtCycles = [37];
+  let ReleaseAtCycles = [37, 1];
 }
 
 def : InstRW<[R5900WriteALU], (instregex

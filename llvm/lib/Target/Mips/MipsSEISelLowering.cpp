@@ -354,6 +354,36 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
     setOperationAction(ISD::FMINNUM, MVT::f32, Legal);
   }
 
+  if (Subtarget.isR5900()) {
+    // MMI operates on the 128-bit core registers.
+    for (MVT VT : MVT::fixedlen_vector_valuetypes()) {
+      for (MVT VT1 : MVT::fixedlen_vector_valuetypes()) {
+        setTruncStoreAction(VT, VT1, Expand);
+        setLoadExtAction(ISD::SEXTLOAD, VT, VT1, Expand);
+        setLoadExtAction(ISD::ZEXTLOAD, VT, VT1, Expand);
+        setLoadExtAction(ISD::EXTLOAD, VT, VT1, Expand);
+      }
+    }
+    for (MVT VT : {MVT::v16i8, MVT::v8i16, MVT::v4i32, MVT::v2i64}) {
+      addRegisterClass(VT, &Mips::GPR128RegClass);
+      for (unsigned Opc = 0; Opc < ISD::BUILTIN_OP_END; ++Opc)
+        setOperationAction(Opc, VT, Expand);
+      setOperationAction({ISD::BITCAST, ISD::LOAD, ISD::STORE, ISD::UNDEF,
+                          ISD::POISON, ISD::AND, ISD::OR, ISD::XOR},
+                         VT, Legal);
+      setOperationAction(ISD::BUILD_VECTOR, VT, Custom);
+      setOperationAction({ISD::LOAD, ISD::STORE}, VT, Custom);
+      if (VT != MVT::v2i64)
+        setOperationAction({ISD::ADD, ISD::SUB}, VT, Legal);
+      if (VT != MVT::v2i64 && VT != MVT::v16i8) {
+        setOperationAction({ISD::SMAX, ISD::SMIN}, VT, Legal);
+        setOperationAction({ISD::SHL, ISD::SRA, ISD::SRL}, VT, Custom);
+      }
+      if (VT != MVT::v2i64)
+        setOperationAction(ISD::SETCC, VT, Custom);
+    }
+  }
+
   computeRegisterProperties(Subtarget.getRegisterInfo());
 }
 
@@ -600,6 +630,10 @@ SDValue MipsSETargetLowering::LowerOperation(SDValue Op,
   case ISD::INTRINSIC_VOID:     return lowerINTRINSIC_VOID(Op, DAG);
   case ISD::EXTRACT_VECTOR_ELT: return lowerEXTRACT_VECTOR_ELT(Op, DAG);
   case ISD::BUILD_VECTOR:       return lowerBUILD_VECTOR(Op, DAG);
+  case ISD::SETCC:              return lowerMMISetCC(Op, DAG);
+  case ISD::SHL:
+  case ISD::SRA:
+  case ISD::SRL:                return lowerMMIShift(Op, DAG);
   case ISD::VECTOR_SHUFFLE:     return lowerVECTOR_SHUFFLE(Op, DAG);
   case ISD::SELECT:
     return lowerSELECT(Op, DAG);
@@ -1318,8 +1352,105 @@ getOpndList(SmallVectorImpl<SDValue> &Ops,
                                   Chain);
 }
 
+SDValue MipsSETargetLowering::lowerMMISetCC(SDValue Op,
+                                            SelectionDAG &DAG) const {
+  EVT VT = Op.getValueType();
+  if (!Subtarget.isR5900() || Subtarget.hasMSA() || !VT.isVector())
+    return MipsTargetLowering::LowerOperation(Op, DAG);
+  SDLoc DL(Op);
+  SDValue A = Op.getOperand(0), B = Op.getOperand(1);
+  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(2))->get();
+
+  // Only eq and signed gt exist; the rest are built from them.
+  if (ISD::isUnsignedIntSetCC(CC)) {
+    SDValue Ones = DAG.getAllOnesConstant(DL, VT);
+    SDValue Sign;
+    if (VT == MVT::v16i8) {
+      SDValue H = DAG.getNode(
+          MipsISD::MMIShl, DL, MVT::v8i16,
+          DAG.getNode(ISD::BITCAST, DL, MVT::v8i16, Ones),
+          DAG.getConstant(15, DL, MVT::i32));
+      SDValue L = DAG.getNode(MipsISD::MMISrl, DL, MVT::v8i16, H,
+                              DAG.getConstant(8, DL, MVT::i32));
+      Sign = DAG.getNode(ISD::BITCAST, DL, VT,
+                         DAG.getNode(ISD::OR, DL, MVT::v8i16, H, L));
+    } else {
+      Sign = DAG.getNode(
+          MipsISD::MMIShl, DL, VT, Ones,
+          DAG.getConstant(VT.getScalarSizeInBits() - 1, DL, MVT::i32));
+    }
+    A = DAG.getNode(ISD::XOR, DL, VT, A, Sign);
+    B = DAG.getNode(ISD::XOR, DL, VT, B, Sign);
+    switch (CC) {
+    case ISD::SETULT: CC = ISD::SETLT; break;
+    case ISD::SETULE: CC = ISD::SETLE; break;
+    case ISD::SETUGT: CC = ISD::SETGT; break;
+    default:          CC = ISD::SETGE; break;
+    }
+  }
+
+  switch (CC) {
+  case ISD::SETEQ:
+  case ISD::SETGT:
+    return DAG.getSetCC(DL, VT, A, B, CC);
+  case ISD::SETLT:
+    return DAG.getSetCC(DL, VT, B, A, ISD::SETGT);
+  case ISD::SETGE:
+    return DAG.getNode(MipsISD::MMINot, DL, VT,
+                       DAG.getSetCC(DL, VT, B, A, ISD::SETGT));
+  case ISD::SETLE:
+    return DAG.getNode(MipsISD::MMINot, DL, VT,
+                       DAG.getSetCC(DL, VT, A, B, ISD::SETGT));
+  default:
+    return DAG.getNode(MipsISD::MMINot, DL, VT,
+                       DAG.getSetCC(DL, VT, A, B, ISD::SETEQ));
+  }
+}
+
+SDValue MipsSETargetLowering::lowerMMIShift(SDValue Op,
+                                            SelectionDAG &DAG) const {
+  EVT VT = Op.getValueType();
+  if (!Subtarget.isR5900() || Subtarget.hasMSA() || !VT.isVector())
+    return MipsTargetLowering::LowerOperation(Op, DAG);
+  APInt Amt;
+  if (!ISD::isConstantSplatVector(Op.getOperand(1).getNode(), Amt) ||
+      Amt.uge(VT.getScalarSizeInBits()))
+    return SDValue();
+
+  unsigned Opc = Op.getOpcode() == ISD::SHL   ? MipsISD::MMIShl
+                 : Op.getOpcode() == ISD::SRA ? MipsISD::MMISra
+                                              : MipsISD::MMISrl;
+  SDLoc DL(Op);
+  return DAG.getNode(Opc, DL, VT, Op.getOperand(0),
+                     DAG.getConstant(Amt.getZExtValue(), DL, MVT::i32));
+}
+
 SDValue MipsSETargetLowering::lowerLOAD(SDValue Op, SelectionDAG &DAG) const {
   LoadSDNode &Nd = *cast<LoadSDNode>(Op);
+
+  if (Subtarget.isR5900() && !Subtarget.hasMSA() &&
+      Nd.getValueType(0).isFixedLengthVector() &&
+      Nd.getValueType(0).getSizeInBits() == 128) {
+    if (Nd.getAlign() >= Align(16))
+      return Op;
+
+    // Two unaligned 64-bit loads (ldl/ldr) joined with pcpyld.
+    SDLoc DL(Op);
+    SDValue Ptr = Nd.getBasePtr(), Chain = Nd.getChain();
+    MachineMemOperand::Flags Flags = Nd.getMemOperand()->getFlags();
+    SDValue Lo = DAG.getLoad(MVT::i64, DL, Chain, Ptr, Nd.getPointerInfo(),
+                             Nd.getAlign(), Flags);
+    SDValue Hi = DAG.getLoad(
+        MVT::i64, DL, Chain,
+        DAG.getMemBasePlusOffset(Ptr, TypeSize::getFixed(8), DL),
+        Nd.getPointerInfo().getWithOffset(8), commonAlignment(Nd.getAlign(), 8),
+        Flags);
+    SDValue Pack = DAG.getNode(MipsISD::MMIPack, DL, MVT::v2i64, Hi, Lo);
+    SDValue Res = DAG.getNode(ISD::BITCAST, DL, Nd.getValueType(0), Pack);
+    SDValue Chains = DAG.getNode(ISD::TokenFactor, DL, MVT::Other,
+                                 Lo.getValue(1), Hi.getValue(1));
+    return DAG.getMergeValues({Res, Chains}, DL);
+  }
 
   if (Nd.getMemoryVT() != MVT::f64 || (!NoDPLoadStore && Subtarget.hasMips2()))
     return MipsTargetLowering::lowerLOAD(Op, DAG);
@@ -1355,6 +1486,28 @@ SDValue MipsSETargetLowering::lowerLOAD(SDValue Op, SelectionDAG &DAG) const {
 
 SDValue MipsSETargetLowering::lowerSTORE(SDValue Op, SelectionDAG &DAG) const {
   StoreSDNode &Nd = *cast<StoreSDNode>(Op);
+
+  if (Subtarget.isR5900() && !Subtarget.hasMSA() &&
+      Nd.getValue().getValueType().isFixedLengthVector() &&
+      Nd.getValue().getValueType().getSizeInBits() == 128) {
+    if (Nd.getAlign() >= Align(16))
+      return Op;
+
+    // pcpyud extracts the high half; two unaligned 64-bit stores (sdl/sdr).
+    SDLoc DL(Op);
+    SDValue Ptr = Nd.getBasePtr(), Chain = Nd.getChain();
+    MachineMemOperand::Flags Flags = Nd.getMemOperand()->getFlags();
+    SDValue V = DAG.getNode(ISD::BITCAST, DL, MVT::v2i64, Nd.getValue());
+    SDValue Lo = DAG.getNode(MipsISD::MMILo, DL, MVT::i64, V);
+    SDValue Hi = DAG.getNode(MipsISD::MMIHi, DL, MVT::i64, V);
+    SDValue S0 = DAG.getStore(Chain, DL, Lo, Ptr, Nd.getPointerInfo(),
+                              Nd.getAlign(), Flags, Nd.getAAInfo());
+    SDValue S1 = DAG.getStore(
+        Chain, DL, Hi, DAG.getMemBasePlusOffset(Ptr, TypeSize::getFixed(8), DL),
+        Nd.getPointerInfo().getWithOffset(8), commonAlignment(Nd.getAlign(), 8),
+        Flags, Nd.getAAInfo());
+    return DAG.getNode(ISD::TokenFactor, DL, MVT::Other, S0, S1);
+  }
 
   if (Nd.getMemoryVT() != MVT::f64 || (!NoDPLoadStore && Subtarget.hasMips2()))
     return MipsTargetLowering::lowerSTORE(Op, DAG);
@@ -2613,6 +2766,13 @@ static bool isConstantOrUndefBUILD_VECTOR(const BuildVectorSDNode *Op) {
 // - All others are illegal and must be expanded.
 SDValue MipsSETargetLowering::lowerBUILD_VECTOR(SDValue Op,
                                                 SelectionDAG &DAG) const {
+  if (!Subtarget.hasMSA() && Subtarget.isR5900()) {
+    if (ISD::isBuildVectorAllOnes(Op.getNode()) ||
+        ISD::isBuildVectorAllZeros(Op.getNode()))
+      return Op;
+    return SDValue();
+  }
+
   BuildVectorSDNode *Node = cast<BuildVectorSDNode>(Op);
   EVT ResTy = Op->getValueType(0);
   SDLoc DL(Op);

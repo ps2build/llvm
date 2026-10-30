@@ -32,9 +32,24 @@ public:
       : BaseT(TM, F.getDataLayout()), ST(TM->getSubtargetImpl(F)),
         TLI(ST->getTargetLowering()) {}
 
+  TypeSize
+  getRegisterBitWidth(TTI::RegisterKind K) const override;
+
+  InstructionCost getMemoryOpCost(
+      unsigned Opcode, Type *Src, Align Alignment, unsigned AddressSpace,
+      TTI::TargetCostKind CostKind,
+      TTI::OperandValueInfo OpInfo = {TTI::OK_AnyValue, TTI::OP_None},
+      const Instruction *I = nullptr) const override;
+
+  unsigned getMaxInterleaveFactor(ElementCount VF,
+                                  bool HasUnorderedReductions) const override;
+
   bool hasDivRemOp(Type *DataType, bool IsSigned) const override;
 
   unsigned adjustInliningThreshold(const CallBase *CB) const override;
+  void getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
+                               TTI::UnrollingPreferences &UP,
+                               OptimizationRemarkEmitter *ORE) const override;
 
   bool isLSRCostLess(const TargetTransformInfo::LSRCost &C1,
                      const TargetTransformInfo::LSRCost &C2) const override;

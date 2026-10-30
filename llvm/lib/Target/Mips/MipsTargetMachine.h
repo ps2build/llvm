@@ -24,6 +24,8 @@
 
 namespace llvm {
 
+class PassBuilder;
+
 class MipsTargetMachine : public CodeGenTargetMachineImpl {
   bool isLittle;
   std::unique_ptr<TargetLoweringObjectFile> TLOF;
@@ -45,6 +47,8 @@ public:
   ~MipsTargetMachine() override;
 
   TargetTransformInfo getTargetTransformInfo(const Function &F) const override;
+
+  void registerPassBuilderCallbacks(PassBuilder &PB) override;
 
   const MipsSubtarget *getSubtargetImpl() const {
     if (Subtarget)

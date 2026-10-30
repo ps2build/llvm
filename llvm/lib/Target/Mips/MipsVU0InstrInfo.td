@@ -1157,6 +1157,152 @@ def SQ : InstSE<(outs), (ins GPR64Opnd:$rt, mem:$addr), "sq\t$rt, $addr",
 }
 }
 
+// Code generation views of the MMI operations on whole 128-bit GPRs. They
+// are expanded after register allocation into the P_*, LQ and SQ
+// instructions, using the low 64-bit sub-register of each operand.
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1 in {
+class MMI128_3R : PseudoSE<(outs GPR128:$rd), (ins GPR128:$rs, GPR128:$rt), []>;
+
+def PAND_128 : MMI128_3R;
+def POR_128 : MMI128_3R;
+def PXOR_128 : MMI128_3R;
+def PNOR_128 : MMI128_3R;
+def PADDB_128 : MMI128_3R;
+def PADDH_128 : MMI128_3R;
+def PADDW_128 : MMI128_3R;
+def PSUBB_128 : MMI128_3R;
+def PSUBH_128 : MMI128_3R;
+def PSUBW_128 : MMI128_3R;
+def PCEQB_128 : MMI128_3R;
+def PCEQH_128 : MMI128_3R;
+def PCEQW_128 : MMI128_3R;
+def PCGTB_128 : MMI128_3R;
+def PCGTH_128 : MMI128_3R;
+def PCGTW_128 : MMI128_3R;
+def PMAXH_128 : MMI128_3R;
+def PMAXW_128 : MMI128_3R;
+def PMINH_128 : MMI128_3R;
+def PMINW_128 : MMI128_3R;
+
+class MMI128_Sh : PseudoSE<(outs GPR128:$rd), (ins GPR128:$rt, uimm5:$shamt), []>;
+def PSLLH_128 : MMI128_Sh;
+def PSLLW_128 : MMI128_Sh;
+def PSRAH_128 : MMI128_Sh;
+def PSRAW_128 : MMI128_Sh;
+def PSRLH_128 : MMI128_Sh;
+def PSRLW_128 : MMI128_Sh;
+
+let mayLoad = 1 in
+def LQ_128 : PseudoSE<(outs GPR128:$rt), (ins mem:$addr), []>;
+let mayStore = 1 in
+def SQ_128 : PseudoSE<(outs), (ins GPR128:$rt, mem:$addr), []>;
+}
+
+def SDT_MipsMMIPack : SDTypeProfile<1, 2, [SDTCisVT<0, v2i64>,
+                                           SDTCisVT<1, i64>, SDTCisSameAs<1, 2>]>;
+def SDT_MipsMMIPart : SDTypeProfile<1, 1, [SDTCisVT<0, i64>, SDTCisVT<1, v2i64>]>;
+def MipsMMIPack : SDNode<"MipsISD::MMIPack", SDT_MipsMMIPack>;
+def SDT_MipsMMIShift : SDTypeProfile<1, 2, [SDTCisVec<0>, SDTCisSameAs<0, 1>,
+                                            SDTCisVT<2, i32>]>;
+def MipsMMINot : SDNode<"MipsISD::MMINot", SDTIntUnaryOp>;
+def MipsMMIShl : SDNode<"MipsISD::MMIShl", SDT_MipsMMIShift>;
+def MipsMMISra : SDNode<"MipsISD::MMISra", SDT_MipsMMIShift>;
+def MipsMMISrl : SDNode<"MipsISD::MMISrl", SDT_MipsMMIShift>;
+def MipsMMILo : SDNode<"MipsISD::MMILo", SDT_MipsMMIPart>;
+def MipsMMIHi : SDNode<"MipsISD::MMIHi", SDT_MipsMMIPart>;
+
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1 in {
+def PCPYLD_V : PseudoSE<(outs GPR128:$rd), (ins GPR64:$rs, GPR64:$rt), []>;
+def PLO_V : PseudoSE<(outs GPR64:$rd), (ins GPR128:$rs), []>;
+def PCPYUD_V : PseudoSE<(outs GPR64:$rd), (ins GPR128:$rs, GPR128:$rt), []>;
+}
+
+def aligned16load : PatFrag<(ops node:$ptr), (load node:$ptr), [{
+  return cast<LoadSDNode>(N)->getAlign() >= Align(16);
+}]>;
+def aligned16store : PatFrag<(ops node:$val, node:$ptr), (store node:$val, node:$ptr), [{
+  return cast<StoreSDNode>(N)->getAlign() >= Align(16);
+}]>;
+
+class MMI128Bin<SDPatternOperator Op, ValueType VT, Instruction I>
+    : MipsPat<(Op VT:$rs, VT:$rt),
+              (COPY_TO_REGCLASS (I (COPY_TO_REGCLASS VT:$rs, GPR128),
+                                   (COPY_TO_REGCLASS VT:$rt, GPR128)),
+                                GPR128)>;
+
+let Predicates = [IsR5900Pred] in {
+foreach VT = [v16i8, v8i16, v4i32, v2i64] in {
+  def : MMI128Bin<and, VT, PAND_128>;
+  def : MMI128Bin<or, VT, POR_128>;
+  def : MMI128Bin<xor, VT, PXOR_128>;
+  def : MipsPat<(vnot (or VT:$rs, VT:$rt)),
+                (COPY_TO_REGCLASS (PNOR_128 (COPY_TO_REGCLASS VT:$rs, GPR128),
+                                            (COPY_TO_REGCLASS VT:$rt, GPR128)),
+                                  GPR128)>;
+  def : MipsPat<(VT (aligned16load addrDefault:$addr)),
+                (COPY_TO_REGCLASS (LQ_128 addrDefault:$addr), GPR128)>;
+  def : MipsPat<(aligned16store VT:$rt, addrDefault:$addr),
+                (SQ_128 (COPY_TO_REGCLASS VT:$rt, GPR128), addrDefault:$addr)>;
+}
+foreach VT = [v16i8, v8i16, v4i32, v2i64] in {
+  def : MipsPat<(VT immAllZerosV),
+                (COPY_TO_REGCLASS (POR_128 GPR128_0, GPR128_0), GPR128)>;
+  def : MipsPat<(VT immAllOnesV),
+                (COPY_TO_REGCLASS (PNOR_128 GPR128_0, GPR128_0), GPR128)>;
+}
+foreach DT = [v16i8, v8i16, v4i32, v2i64] in
+  foreach ST = [v16i8, v8i16, v4i32, v2i64] in
+    if !ne(DT, ST) then
+      def : MipsPat<(DT (bitconvert ST:$src)),
+                    (COPY_TO_REGCLASS ST:$src, GPR128)>;
+def : MipsPat<(MipsMMIPack GPR64:$hi, GPR64:$lo),
+              (COPY_TO_REGCLASS (PCPYLD_V GPR64:$hi, GPR64:$lo), GPR128)>;
+def : MipsPat<(MipsMMIHi v2i64:$v),
+              (PCPYUD_V (COPY_TO_REGCLASS v2i64:$v, GPR128),
+                        (COPY_TO_REGCLASS v2i64:$v, GPR128))>;
+def : MipsPat<(MipsMMILo v2i64:$v),
+              (PLO_V (COPY_TO_REGCLASS v2i64:$v, GPR128))>;
+def : MMI128Bin<add, v16i8, PADDB_128>;
+def : MMI128Bin<add, v8i16, PADDH_128>;
+def : MMI128Bin<add, v4i32, PADDW_128>;
+def : MMI128Bin<sub, v16i8, PSUBB_128>;
+def : MMI128Bin<sub, v8i16, PSUBH_128>;
+def : MMI128Bin<sub, v4i32, PSUBW_128>;
+foreach VT = [v16i8, v8i16, v4i32] in
+  def : MipsPat<(MipsMMINot VT:$rs),
+                (COPY_TO_REGCLASS (PNOR_128 (COPY_TO_REGCLASS VT:$rs, GPR128),
+                                            (COPY_TO_REGCLASS VT:$rs, GPR128)),
+                                  GPR128)>;
+def : MMI128Bin<smax, v8i16, PMAXH_128>;
+def : MMI128Bin<smax, v4i32, PMAXW_128>;
+def : MMI128Bin<smin, v8i16, PMINH_128>;
+def : MMI128Bin<smin, v4i32, PMINW_128>;
+
+class MMI128Cmp<ValueType VT, CondCode CC, Instruction I>
+    : MipsPat<(VT (setcc VT:$rs, VT:$rt, CC)),
+              (COPY_TO_REGCLASS (I (COPY_TO_REGCLASS VT:$rs, GPR128),
+                                   (COPY_TO_REGCLASS VT:$rt, GPR128)),
+                                GPR128)>;
+def : MMI128Cmp<v16i8, SETEQ, PCEQB_128>;
+def : MMI128Cmp<v8i16, SETEQ, PCEQH_128>;
+def : MMI128Cmp<v4i32, SETEQ, PCEQW_128>;
+def : MMI128Cmp<v16i8, SETGT, PCGTB_128>;
+def : MMI128Cmp<v8i16, SETGT, PCGTH_128>;
+def : MMI128Cmp<v4i32, SETGT, PCGTW_128>;
+
+class MMI128Shift<SDPatternOperator Op, ValueType VT, Instruction I>
+    : MipsPat<(Op VT:$rt, immZExt5:$sh),
+              (COPY_TO_REGCLASS (I (COPY_TO_REGCLASS VT:$rt, GPR128),
+                                   immZExt5:$sh),
+                                GPR128)>;
+def : MMI128Shift<MipsMMIShl, v8i16, PSLLH_128>;
+def : MMI128Shift<MipsMMIShl, v4i32, PSLLW_128>;
+def : MMI128Shift<MipsMMISra, v8i16, PSRAH_128>;
+def : MMI128Shift<MipsMMISra, v4i32, PSRAW_128>;
+def : MMI128Shift<MipsMMISrl, v8i16, PSRLH_128>;
+def : MMI128Shift<MipsMMISrl, v4i32, PSRLW_128>;
+}
+
 // di/ei (disable/enable interrupts) and sync.p: found missing, same way
 // as lq/sq, while porting sdk-core's kernel.S (glue.c's DIntr/EIntr use
 // di/ei directly via inline asm; kernel.h's EE_SYNCP() macro uses

@@ -47,6 +47,7 @@ add_llvm_target(MipsCodeGen
   MipsLegalizerInfo.cpp
   MipsBranchExpansion.cpp
   MipsMCInstLower.cpp
+  MipsMMIAlign.cpp
   MipsMachineFunction.cpp
   MipsModuleISelDAGToDAG.cpp
   MipsOptimizePICCall.cpp

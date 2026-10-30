@@ -40,6 +40,12 @@ class MipsRegWithSubRegs<bits<16> Enc, string n, list<Register> subregs>
 // Mips CPU Registers.
 class MipsGPRReg<bits<16> Enc, string n> : MipsReg<Enc, n>;
 
+// R5900 128-bit CPU Registers
+class Mips128GPRReg<bits<16> Enc, string n, list<Register> subregs>
+  : MipsRegWithSubRegs<Enc, n, subregs> {
+  let SubRegIndices = [sub_64];
+}
+
 // Mips 64-bit CPU Registers
 class Mips64GPRReg<bits<16> Enc, string n, list<Register> subregs>
   : MipsRegWithSubRegs<Enc, n, subregs> {
@@ -152,6 +158,16 @@ let Namespace = "Mips" in {
   def SP_64   : Mips64GPRReg< 29, "sp",  [SP]>, DwarfRegNum<[29]>;
   def FP_64   : Mips64GPRReg< 30, "fp",  [FP]>, DwarfRegNum<[30]>;
   def RA_64   : Mips64GPRReg< 31, "ra",  [RA]>, DwarfRegNum<[31]>;
+
+  // R5900 128-bit view of the general purpose registers. MMI instructions read
+  // and write all 128 bits; the low 64 bits are the ordinary GPR64.
+  defvar GPR64Regs = [
+    ZERO_64, AT_64, V0_64, V1_64, A0_64, A1_64, A2_64, A3_64,
+    T0_64, T1_64, T2_64, T3_64, T4_64, T5_64, T6_64, T7_64,
+    S0_64, S1_64, S2_64, S3_64, S4_64, S5_64, S6_64, S7_64,
+    T8_64, T9_64, K0_64, K1_64, GP_64, SP_64, FP_64, RA_64];
+  foreach I = 0-31 in
+  def GPR128_#I : Mips128GPRReg<I, "q"#I, [GPR64Regs[I]]>;
 
   /// Mips Single point precision FPU Registers
   foreach I = 0-31 in
@@ -380,6 +396,10 @@ def GPR64 : RegisterClass<"Mips", [i64], 64, (add
   T8_64, T9_64,
   // Reserved
   K0_64, K1_64, GP_64, SP_64, FP_64, RA_64)>;
+
+// Vector view of the R5900 GPRs, selected only for MMI instructions.
+def GPR128 : RegisterClass<"Mips", [i128], 128,
+                           (sequence "GPR128_%u", 0, 31)>;
 
 def CPU16Regs : RegisterClass<"Mips", [i32], 32, (add
   // Return Values and Arguments

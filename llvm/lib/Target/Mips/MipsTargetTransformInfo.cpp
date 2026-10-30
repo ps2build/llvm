@@ -10,10 +10,70 @@
 
 using namespace llvm;
 
+// MMI works on the 128-bit core registers, which the integer code shares, so
+// the vectorizer gets one vector register width and no interleaving.
+TypeSize MipsTTIImpl::getRegisterBitWidth(TTI::RegisterKind K) const {
+  if (K == TTI::RGK_FixedWidthVector && ST->isR5900() && !ST->hasMSA())
+    return TypeSize::getFixed(128);
+  return BaseT::getRegisterBitWidth(K);
+}
+
+unsigned MipsTTIImpl::getMaxInterleaveFactor(ElementCount VF,
+                                            bool HasUnorderedReductions) const {
+  if (ST->isR5900() && !ST->hasMSA())
+    return 1;
+  return BaseT::getMaxInterleaveFactor(VF, HasUnorderedReductions);
+}
+
+// A 16-byte aligned 128-bit vector is one lq/sq; an unaligned one is two
+// ldl/ldr (sdl/sdr) pairs joined or split by pcpyld/pcpyud; the cost is
+// set from rig timings, where a 4 x i32 add loop on unaligned data ran 39%
+// slower than scalar. A 32-bit-element access aligned to its element is
+// costed as aligned because MipsMMIAlign versions the vector loop on a
+// run-time check.
+InstructionCost MipsTTIImpl::getMemoryOpCost(
+    unsigned Opcode, Type *Src, Align Alignment, unsigned AddressSpace,
+    TTI::TargetCostKind CostKind, TTI::OperandValueInfo OpInfo,
+    const Instruction *I) const {
+  auto *VTy = dyn_cast<FixedVectorType>(Src);
+  if (ST->isR5900() && !ST->hasMSA() && VTy &&
+      VTy->getPrimitiveSizeInBits().getFixedValue() == 128 &&
+      (Opcode == Instruction::Load || Opcode == Instruction::Store))
+    return Alignment >= Align(16) ||
+                   (VTy->getScalarSizeInBits() == 32 && Alignment >= Align(4))
+               ? 1
+               : 24;
+  return BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, CostKind,
+                                OpInfo, I);
+}
+
 bool MipsTTIImpl::hasDivRemOp(Type *DataType, bool IsSigned) const {
   EVT VT = TLI->getValueType(DL, DataType);
   return TLI->isOperationLegalOrCustom(IsSigned ? ISD::SDIVREM : ISD::UDIVREM,
                                        VT);
+}
+
+void MipsTTIImpl::getUnrollingPreferences(
+    Loop *L, ScalarEvolution &SE, TTI::UnrollingPreferences &UP,
+    OptimizationRemarkEmitter *ORE) const {
+  BaseT::getUnrollingPreferences(L, SE, UP, ORE);
+  if (!ST->isR5900() || L->getNumBlocks() != 1)
+    return;
+  // Rig timings: loops with a load of 4 bytes or more gain from unrolling;
+  // byte loops are short and store-only loops lose to the scheduler.
+  const DataLayout &DL = L->getHeader()->getDataLayout();
+  bool HasLoad = false;
+  for (const Instruction &I : *L->getHeader())
+    if (const auto *LI = dyn_cast<LoadInst>(&I)) {
+      if (DL.getTypeStoreSize(LI->getType()) < 4)
+        return;
+      HasLoad = true;
+    }
+  if (!HasLoad)
+    return;
+  UP.Partial = true;
+  UP.Runtime = true;
+  UP.PartialThreshold = 120;
 }
 
 InstructionCost MipsTTIImpl::getArithmeticInstrCost(
@@ -32,6 +92,42 @@ InstructionCost MipsTTIImpl::getArithmeticInstrCost(
       return 4;
     default:
       break;
+    }
+  }
+  // MMI has no multiply, divide, 64-bit add/sub or variable-amount shift of a
+  // 128-bit vector: each element goes through a scalar operation on a stack
+  // temporary. The overhead per element is set from rig timings of raster.
+  if (auto *VTy = dyn_cast<FixedVectorType>(Ty);
+      ST->isR5900() && !ST->hasMSA() && VTy &&
+      VTy->getElementType()->isIntegerTy() &&
+      VTy->getPrimitiveSizeInBits().getFixedValue() == 128) {
+    unsigned EltBits = VTy->getScalarSizeInBits();
+    bool InMMI;
+    switch (Opcode) {
+    case Instruction::Add:
+    case Instruction::Sub:
+      InMMI = EltBits <= 32;
+      break;
+    case Instruction::And:
+    case Instruction::Or:
+    case Instruction::Xor:
+      InMMI = true;
+      break;
+    case Instruction::Shl:
+    case Instruction::LShr:
+    case Instruction::AShr:
+      InMMI = (EltBits == 16 || EltBits == 32) && Op2Info.isUniform() &&
+              Op2Info.isConstant();
+      break;
+    default:
+      InMMI = false;
+      break;
+    }
+    if (!InMMI) {
+      InstructionCost ScalarCost = getArithmeticInstrCost(
+          Opcode, VTy->getElementType(), CostKind, Op1Info.getNoProps(),
+          Op2Info.getNoProps());
+      return VTy->getNumElements() * (ScalarCost + 8);
     }
   }
   return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Op1Info, Op2Info,

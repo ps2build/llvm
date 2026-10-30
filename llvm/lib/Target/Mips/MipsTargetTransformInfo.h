@@ -32,6 +32,12 @@ public:
       : BaseT(TM, F.getDataLayout()), ST(TM->getSubtargetImpl(F)),
         TLI(ST->getTargetLowering()) {}
 
+  TypeSize
+  getRegisterBitWidth(TTI::RegisterKind K) const override;
+
+  unsigned getMaxInterleaveFactor(ElementCount VF,
+                                  bool HasUnorderedReductions) const override;
+
   bool hasDivRemOp(Type *DataType, bool IsSigned) const override;
 
   bool isLSRCostLess(const TargetTransformInfo::LSRCost &C1,

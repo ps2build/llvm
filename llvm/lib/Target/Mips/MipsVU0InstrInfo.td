@@ -1226,6 +1226,11 @@ foreach VT = [v16i8, v8i16, v4i32, v2i64] in {
   def : MipsPat<(VT immAllOnesV),
                 (COPY_TO_REGCLASS (PNOR_128 GPR128_0, GPR128_0), GPR128)>;
 }
+foreach DT = [v16i8, v8i16, v4i32, v2i64] in
+  foreach ST = [v16i8, v8i16, v4i32, v2i64] in
+    if !ne(DT, ST) then
+      def : MipsPat<(DT (bitconvert ST:$src)),
+                    (COPY_TO_REGCLASS ST:$src, GPR128)>;
 def : MipsPat<(MipsMMIPack GPR64:$hi, GPR64:$lo),
               (COPY_TO_REGCLASS (PCPYLD_V GPR64:$hi, GPR64:$lo), GPR128)>;
 def : MipsPat<(MipsMMIHi v2i64:$v),

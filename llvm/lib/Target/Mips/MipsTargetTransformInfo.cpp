@@ -10,6 +10,21 @@
 
 using namespace llvm;
 
+// MMI works on the 128-bit core registers, which the integer code shares, so
+// the vectorizer gets one vector register width and no interleaving.
+TypeSize MipsTTIImpl::getRegisterBitWidth(TTI::RegisterKind K) const {
+  if (K == TTI::RGK_FixedWidthVector && ST->isR5900() && !ST->hasMSA())
+    return TypeSize::getFixed(128);
+  return BaseT::getRegisterBitWidth(K);
+}
+
+unsigned MipsTTIImpl::getMaxInterleaveFactor(ElementCount VF,
+                                            bool HasUnorderedReductions) const {
+  if (ST->isR5900() && !ST->hasMSA())
+    return 1;
+  return BaseT::getMaxInterleaveFactor(VF, HasUnorderedReductions);
+}
+
 bool MipsTTIImpl::hasDivRemOp(Type *DataType, bool IsSigned) const {
   EVT VT = TLI->getValueType(DL, DataType);
   return TLI->isOperationLegalOrCustom(IsSigned ? ISD::SDIVREM : ISD::UDIVREM,

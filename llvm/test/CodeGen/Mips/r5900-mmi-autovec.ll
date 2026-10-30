@@ -29,7 +29,7 @@ exit:
   ret void
 }
 
-; Unaligned vector accesses cost more than the scalar loop on hardware.
+; Accesses below element alignment cost more than the scalar loop on hardware.
 ; IR-LABEL: @add_arrays_unaligned(
 ; IR-NOT: <4 x i32>
 define void @add_arrays_unaligned(ptr noalias %a, ptr noalias %b, ptr noalias %c, i32 %n) {
@@ -41,10 +41,10 @@ loop:
   %pa = getelementptr inbounds i32, ptr %a, i32 %i
   %pb = getelementptr inbounds i32, ptr %b, i32 %i
   %pc = getelementptr inbounds i32, ptr %c, i32 %i
-  %x = load i32, ptr %pa, align 4
-  %y = load i32, ptr %pb, align 4
+  %x = load i32, ptr %pa, align 1
+  %y = load i32, ptr %pb, align 1
   %z = add i32 %x, %y
-  store i32 %z, ptr %pc, align 4
+  store i32 %z, ptr %pc, align 1
   %i.next = add nuw nsw i32 %i, 1
   %done = icmp eq i32 %i.next, %n
   br i1 %done, label %exit, label %loop

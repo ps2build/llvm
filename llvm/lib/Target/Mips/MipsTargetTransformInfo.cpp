@@ -25,6 +25,23 @@ unsigned MipsTTIImpl::getMaxInterleaveFactor(ElementCount VF,
   return BaseT::getMaxInterleaveFactor(VF, HasUnorderedReductions);
 }
 
+// A 16-byte aligned 128-bit vector is one lq/sq; an unaligned one is two
+// ldl/ldr (sdl/sdr) pairs joined or split by pcpyld/pcpyud; the cost is
+// set from rig timings, where a 4 x i32 add loop on unaligned data ran 39%
+// slower than scalar.
+InstructionCost MipsTTIImpl::getMemoryOpCost(
+    unsigned Opcode, Type *Src, Align Alignment, unsigned AddressSpace,
+    TTI::TargetCostKind CostKind, TTI::OperandValueInfo OpInfo,
+    const Instruction *I) const {
+  auto *VTy = dyn_cast<FixedVectorType>(Src);
+  if (ST->isR5900() && !ST->hasMSA() && VTy &&
+      VTy->getPrimitiveSizeInBits().getFixedValue() == 128 &&
+      (Opcode == Instruction::Load || Opcode == Instruction::Store))
+    return Alignment >= Align(16) ? 1 : 12;
+  return BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, CostKind,
+                                OpInfo, I);
+}
+
 bool MipsTTIImpl::hasDivRemOp(Type *DataType, bool IsSigned) const {
   EVT VT = TLI->getValueType(DL, DataType);
   return TLI->isOperationLegalOrCustom(IsSigned ? ISD::SDIVREM : ISD::UDIVREM,

@@ -1180,6 +1180,47 @@ let mayStore = 1 in
 def SQ_128 : PseudoSE<(outs), (ins GPR128:$rt, mem:$addr), []>;
 }
 
+def aligned16load : PatFrag<(ops node:$ptr), (load node:$ptr), [{
+  return cast<LoadSDNode>(N)->getAlign() >= Align(16);
+}]>;
+def aligned16store : PatFrag<(ops node:$val, node:$ptr), (store node:$val, node:$ptr), [{
+  return cast<StoreSDNode>(N)->getAlign() >= Align(16);
+}]>;
+
+class MMI128Bin<SDPatternOperator Op, ValueType VT, Instruction I>
+    : MipsPat<(Op VT:$rs, VT:$rt),
+              (COPY_TO_REGCLASS (I (COPY_TO_REGCLASS VT:$rs, GPR128),
+                                   (COPY_TO_REGCLASS VT:$rt, GPR128)),
+                                GPR128)>;
+
+let Predicates = [IsR5900Pred] in {
+foreach VT = [v16i8, v8i16, v4i32, v2i64] in {
+  def : MMI128Bin<and, VT, PAND_128>;
+  def : MMI128Bin<or, VT, POR_128>;
+  def : MMI128Bin<xor, VT, PXOR_128>;
+  def : MipsPat<(vnot (or VT:$rs, VT:$rt)),
+                (COPY_TO_REGCLASS (PNOR_128 (COPY_TO_REGCLASS VT:$rs, GPR128),
+                                            (COPY_TO_REGCLASS VT:$rt, GPR128)),
+                                  GPR128)>;
+  def : MipsPat<(VT (aligned16load addrDefault:$addr)),
+                (COPY_TO_REGCLASS (LQ_128 addrDefault:$addr), GPR128)>;
+  def : MipsPat<(aligned16store VT:$rt, addrDefault:$addr),
+                (SQ_128 (COPY_TO_REGCLASS VT:$rt, GPR128), addrDefault:$addr)>;
+}
+foreach VT = [v16i8, v8i16, v4i32, v2i64] in {
+  def : MipsPat<(VT immAllZerosV),
+                (COPY_TO_REGCLASS (POR_128 GPR128_0, GPR128_0), GPR128)>;
+  def : MipsPat<(VT immAllOnesV),
+                (COPY_TO_REGCLASS (PNOR_128 GPR128_0, GPR128_0), GPR128)>;
+}
+def : MMI128Bin<add, v16i8, PADDB_128>;
+def : MMI128Bin<add, v8i16, PADDH_128>;
+def : MMI128Bin<add, v4i32, PADDW_128>;
+def : MMI128Bin<sub, v16i8, PSUBB_128>;
+def : MMI128Bin<sub, v8i16, PSUBH_128>;
+def : MMI128Bin<sub, v4i32, PSUBW_128>;
+}
+
 // di/ei (disable/enable interrupts) and sync.p: found missing, same way
 // as lq/sq, while porting sdk-core's kernel.S (glue.c's DIntr/EIntr use
 // di/ei directly via inline asm; kernel.h's EE_SYNCP() macro uses

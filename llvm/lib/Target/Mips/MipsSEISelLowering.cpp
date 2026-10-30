@@ -354,6 +354,29 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
     setOperationAction(ISD::FMINNUM, MVT::f32, Legal);
   }
 
+  if (Subtarget.isR5900()) {
+    // MMI operates on the 128-bit core registers.
+    for (MVT VT : MVT::fixedlen_vector_valuetypes()) {
+      for (MVT VT1 : MVT::fixedlen_vector_valuetypes()) {
+        setTruncStoreAction(VT, VT1, Expand);
+        setLoadExtAction(ISD::SEXTLOAD, VT, VT1, Expand);
+        setLoadExtAction(ISD::ZEXTLOAD, VT, VT1, Expand);
+        setLoadExtAction(ISD::EXTLOAD, VT, VT1, Expand);
+      }
+    }
+    for (MVT VT : {MVT::v16i8, MVT::v8i16, MVT::v4i32, MVT::v2i64}) {
+      addRegisterClass(VT, &Mips::GPR128RegClass);
+      for (unsigned Opc = 0; Opc < ISD::BUILTIN_OP_END; ++Opc)
+        setOperationAction(Opc, VT, Expand);
+      setOperationAction({ISD::BITCAST, ISD::LOAD, ISD::STORE, ISD::UNDEF,
+                          ISD::POISON, ISD::AND, ISD::OR, ISD::XOR},
+                         VT, Legal);
+      setOperationAction(ISD::BUILD_VECTOR, VT, Custom);
+      if (VT != MVT::v2i64)
+        setOperationAction({ISD::ADD, ISD::SUB}, VT, Legal);
+    }
+  }
+
   computeRegisterProperties(Subtarget.getRegisterInfo());
 }
 
@@ -2613,6 +2636,13 @@ static bool isConstantOrUndefBUILD_VECTOR(const BuildVectorSDNode *Op) {
 // - All others are illegal and must be expanded.
 SDValue MipsSETargetLowering::lowerBUILD_VECTOR(SDValue Op,
                                                 SelectionDAG &DAG) const {
+  if (!Subtarget.hasMSA() && Subtarget.isR5900()) {
+    if (ISD::isBuildVectorAllOnes(Op.getNode()) ||
+        ISD::isBuildVectorAllZeros(Op.getNode()))
+      return Op;
+    return SDValue();
+  }
+
   BuildVectorSDNode *Node = cast<BuildVectorSDNode>(Op);
   EVT ResTy = Op->getValueType(0);
   SDLoc DL(Op);

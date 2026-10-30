@@ -28,8 +28,9 @@ unsigned MipsTTIImpl::getMaxInterleaveFactor(ElementCount VF,
 // A 16-byte aligned 128-bit vector is one lq/sq; an unaligned one is two
 // ldl/ldr (sdl/sdr) pairs joined or split by pcpyld/pcpyud; the cost is
 // set from rig timings, where a 4 x i32 add loop on unaligned data ran 39%
-// slower than scalar. A 32-bit-element access aligned to its element is costed as aligned
-// because MipsMMIAlign versions the vector loop on a run-time check.
+// slower than scalar. A 32-bit-element access aligned to its element is
+// costed as aligned because MipsMMIAlign versions the vector loop on a
+// run-time check.
 InstructionCost MipsTTIImpl::getMemoryOpCost(
     unsigned Opcode, Type *Src, Align Alignment, unsigned AddressSpace,
     TTI::TargetCostKind CostKind, TTI::OperandValueInfo OpInfo,
@@ -68,6 +69,42 @@ InstructionCost MipsTTIImpl::getArithmeticInstrCost(
       return 4;
     default:
       break;
+    }
+  }
+  // MMI has no multiply, divide, 64-bit add/sub or variable-amount shift of a
+  // 128-bit vector: each element goes through a scalar operation on a stack
+  // temporary. The overhead per element is set from rig timings of raster.
+  if (auto *VTy = dyn_cast<FixedVectorType>(Ty);
+      ST->isR5900() && !ST->hasMSA() && VTy &&
+      VTy->getElementType()->isIntegerTy() &&
+      VTy->getPrimitiveSizeInBits().getFixedValue() == 128) {
+    unsigned EltBits = VTy->getScalarSizeInBits();
+    bool InMMI;
+    switch (Opcode) {
+    case Instruction::Add:
+    case Instruction::Sub:
+      InMMI = EltBits <= 32;
+      break;
+    case Instruction::And:
+    case Instruction::Or:
+    case Instruction::Xor:
+      InMMI = true;
+      break;
+    case Instruction::Shl:
+    case Instruction::LShr:
+    case Instruction::AShr:
+      InMMI = (EltBits == 16 || EltBits == 32) && Op2Info.isUniform() &&
+              Op2Info.isConstant();
+      break;
+    default:
+      InMMI = false;
+      break;
+    }
+    if (!InMMI) {
+      InstructionCost ScalarCost = getArithmeticInstrCost(
+          Opcode, VTy->getElementType(), CostKind, Op1Info.getNoProps(),
+          Op2Info.getNoProps());
+      return VTy->getNumElements() * (ScalarCost + 8);
     }
   }
   return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Op1Info, Op2Info,

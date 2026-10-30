@@ -92,6 +92,9 @@ private:
   std::pair<bool, bool> compareOpndSize(unsigned Opc,
                                         const MachineFunction &MF) const;
 
+  void expandMMI128(MachineBasicBlock &MBB, MachineInstr &MI,
+                    unsigned Opc) const;
+
   void expandPseudoMFHiLo(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                           unsigned NewOpc) const;
 

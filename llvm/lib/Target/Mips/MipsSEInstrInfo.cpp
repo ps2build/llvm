@@ -211,6 +211,15 @@ void MipsSEInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     Opc = Mips::FMOV_D32;
   else if (Mips::FGR64RegClass.contains(DestReg, SrcReg))
     Opc = Mips::FMOV_D64;
+  else if (Mips::GPR128RegClass.contains(DestReg, SrcReg)) {
+    const TargetRegisterInfo *TRI = &getRegisterInfo();
+    BuildMI(MBB, I, DL, get(Mips::P_POR),
+            TRI->getSubReg(DestReg, Mips::sub_64))
+        .addReg(TRI->getSubReg(SrcReg, Mips::sub_64),
+                getKillRegState(KillSrc))
+        .addReg(Mips::ZERO_64);
+    return;
+  }
   else if (Mips::GPR64RegClass.contains(DestReg)) { // Copy to CPU64 Reg.
     if (Mips::GPR64RegClass.contains(SrcReg))
       Opc = Mips::OR64, ZeroReg = Mips::ZERO_64;
@@ -315,6 +324,8 @@ void MipsSEInstrInfo::storeRegToStack(MachineBasicBlock &MBB,
     Opc = Mips::SW;
   else if (Mips::GPR64RegClass.hasSubClassEq(RC))
     Opc = Mips::SD;
+  else if (Mips::GPR128RegClass.hasSubClassEq(RC))
+    Opc = Mips::SQ_128;
   else if (Mips::ACC64RegClass.hasSubClassEq(RC))
     Opc = Mips::STORE_ACC64;
   else if (Mips::ACC64DSPRegClass.hasSubClassEq(RC))
@@ -395,6 +406,8 @@ void MipsSEInstrInfo::loadRegFromStack(MachineBasicBlock &MBB,
     Opc = Mips::LW;
   else if (Mips::GPR64RegClass.hasSubClassEq(RC))
     Opc = Mips::LD;
+  else if (Mips::GPR128RegClass.hasSubClassEq(RC))
+    Opc = Mips::LQ_128;
   else if (Mips::ACC64RegClass.hasSubClassEq(RC))
     Opc = Mips::LOAD_ACC64;
   else if (Mips::ACC64DSPRegClass.hasSubClassEq(RC))
@@ -462,6 +475,23 @@ void MipsSEInstrInfo::loadRegFromStack(MachineBasicBlock &MBB,
   }
 }
 
+void MipsSEInstrInfo::expandMMI128(MachineBasicBlock &MBB, MachineInstr &MI,
+                                   unsigned Opc) const {
+  const TargetRegisterInfo *TRI = &getRegisterInfo();
+  MachineInstrBuilder MIB = BuildMI(MBB, MI, MI.getDebugLoc(), get(Opc));
+  for (const MachineOperand &MO : MI.operands()) {
+    if (MO.isReg() && Mips::GPR128RegClass.contains(MO.getReg())) {
+      RegState Flags = getKillRegState(MO.isKill()) |
+                       getDefRegState(MO.isDef()) |
+                       getUndefRegState(MO.isUndef());
+      MIB.addReg(TRI->getSubReg(MO.getReg(), Mips::sub_64), Flags);
+    } else {
+      MIB.add(MO);
+    }
+  }
+  MIB.setMemRefs(MI.memoperands());
+}
+
 bool MipsSEInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   MachineBasicBlock &MBB = *MI.getParent();
   bool isMicroMips = Subtarget.inMicroMipsMode();
@@ -470,6 +500,42 @@ bool MipsSEInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   switch (MI.getDesc().getOpcode()) {
   default:
     return false;
+  case Mips::PAND_128:
+    expandMMI128(MBB, MI, Mips::P_PAND);
+    break;
+  case Mips::POR_128:
+    expandMMI128(MBB, MI, Mips::P_POR);
+    break;
+  case Mips::PXOR_128:
+    expandMMI128(MBB, MI, Mips::P_PXOR);
+    break;
+  case Mips::PNOR_128:
+    expandMMI128(MBB, MI, Mips::P_PNOR);
+    break;
+  case Mips::PADDB_128:
+    expandMMI128(MBB, MI, Mips::P_PADDB);
+    break;
+  case Mips::PADDH_128:
+    expandMMI128(MBB, MI, Mips::P_PADDH);
+    break;
+  case Mips::PADDW_128:
+    expandMMI128(MBB, MI, Mips::P_PADDW);
+    break;
+  case Mips::PSUBB_128:
+    expandMMI128(MBB, MI, Mips::P_PSUBB);
+    break;
+  case Mips::PSUBH_128:
+    expandMMI128(MBB, MI, Mips::P_PSUBH);
+    break;
+  case Mips::PSUBW_128:
+    expandMMI128(MBB, MI, Mips::P_PSUBW);
+    break;
+  case Mips::LQ_128:
+    expandMMI128(MBB, MI, Mips::LQ);
+    break;
+  case Mips::SQ_128:
+    expandMMI128(MBB, MI, Mips::SQ);
+    break;
   case Mips::RetRA:
     expandRetRA(MBB, MI);
     break;

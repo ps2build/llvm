@@ -252,6 +252,11 @@ getReservedRegs(const MachineFunction &MF) const {
     Reserved.set(Mips::GP_64);
   }
 
+  // A 128-bit register is reserved whenever its low half is.
+  for (unsigned I = 0; I < 32; ++I)
+    if (Reserved.test(Mips::GPR64RegClass.getRegister(I)))
+      Reserved.set(Mips::GPR128RegClass.getRegister(I));
+
   return Reserved;
 }
 

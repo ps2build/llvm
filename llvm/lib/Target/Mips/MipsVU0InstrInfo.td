@@ -1157,6 +1157,29 @@ def SQ : InstSE<(outs), (ins GPR64Opnd:$rt, mem:$addr), "sq\t$rt, $addr",
 }
 }
 
+// Code generation views of the MMI operations on whole 128-bit GPRs. They
+// are expanded after register allocation into the P_*, LQ and SQ
+// instructions, using the low 64-bit sub-register of each operand.
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1 in {
+class MMI128_3R : PseudoSE<(outs GPR128:$rd), (ins GPR128:$rs, GPR128:$rt), []>;
+
+def PAND_128 : MMI128_3R;
+def POR_128 : MMI128_3R;
+def PXOR_128 : MMI128_3R;
+def PNOR_128 : MMI128_3R;
+def PADDB_128 : MMI128_3R;
+def PADDH_128 : MMI128_3R;
+def PADDW_128 : MMI128_3R;
+def PSUBB_128 : MMI128_3R;
+def PSUBH_128 : MMI128_3R;
+def PSUBW_128 : MMI128_3R;
+
+let mayLoad = 1 in
+def LQ_128 : PseudoSE<(outs GPR128:$rt), (ins mem:$addr), []>;
+let mayStore = 1 in
+def SQ_128 : PseudoSE<(outs), (ins GPR128:$rt, mem:$addr), []>;
+}
+
 // di/ei (disable/enable interrupts) and sync.p: found missing, same way
 // as lq/sq, while porting sdk-core's kernel.S (glue.c's DIntr/EIntr use
 // di/ei directly via inline asm; kernel.h's EE_SYNCP() macro uses

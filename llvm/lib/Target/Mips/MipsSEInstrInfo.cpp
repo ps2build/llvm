@@ -500,6 +500,54 @@ bool MipsSEInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   switch (MI.getDesc().getOpcode()) {
   default:
     return false;
+  case Mips::PCEQB_128:
+    expandMMI128(MBB, MI, Mips::P_PCEQB);
+    break;
+  case Mips::PCEQH_128:
+    expandMMI128(MBB, MI, Mips::P_PCEQH);
+    break;
+  case Mips::PCEQW_128:
+    expandMMI128(MBB, MI, Mips::P_PCEQW);
+    break;
+  case Mips::PCGTB_128:
+    expandMMI128(MBB, MI, Mips::P_PCGTB);
+    break;
+  case Mips::PCGTH_128:
+    expandMMI128(MBB, MI, Mips::P_PCGTH);
+    break;
+  case Mips::PCGTW_128:
+    expandMMI128(MBB, MI, Mips::P_PCGTW);
+    break;
+  case Mips::PMAXH_128:
+    expandMMI128(MBB, MI, Mips::P_PMAXH);
+    break;
+  case Mips::PMAXW_128:
+    expandMMI128(MBB, MI, Mips::P_PMAXW);
+    break;
+  case Mips::PMINH_128:
+    expandMMI128(MBB, MI, Mips::P_PMINH);
+    break;
+  case Mips::PMINW_128:
+    expandMMI128(MBB, MI, Mips::P_PMINW);
+    break;
+  case Mips::PSLLH_128:
+    expandMMI128(MBB, MI, Mips::P_PSLLH);
+    break;
+  case Mips::PSLLW_128:
+    expandMMI128(MBB, MI, Mips::P_PSLLW);
+    break;
+  case Mips::PSRAH_128:
+    expandMMI128(MBB, MI, Mips::P_PSRAH);
+    break;
+  case Mips::PSRAW_128:
+    expandMMI128(MBB, MI, Mips::P_PSRAW);
+    break;
+  case Mips::PSRLH_128:
+    expandMMI128(MBB, MI, Mips::P_PSRLH);
+    break;
+  case Mips::PSRLW_128:
+    expandMMI128(MBB, MI, Mips::P_PSRLW);
+    break;
   case Mips::PAND_128:
     expandMMI128(MBB, MI, Mips::P_PAND);
     break;

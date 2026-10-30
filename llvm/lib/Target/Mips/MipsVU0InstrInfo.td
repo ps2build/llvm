@@ -1173,6 +1173,24 @@ def PADDW_128 : MMI128_3R;
 def PSUBB_128 : MMI128_3R;
 def PSUBH_128 : MMI128_3R;
 def PSUBW_128 : MMI128_3R;
+def PCEQB_128 : MMI128_3R;
+def PCEQH_128 : MMI128_3R;
+def PCEQW_128 : MMI128_3R;
+def PCGTB_128 : MMI128_3R;
+def PCGTH_128 : MMI128_3R;
+def PCGTW_128 : MMI128_3R;
+def PMAXH_128 : MMI128_3R;
+def PMAXW_128 : MMI128_3R;
+def PMINH_128 : MMI128_3R;
+def PMINW_128 : MMI128_3R;
+
+class MMI128_Sh : PseudoSE<(outs GPR128:$rd), (ins GPR128:$rt, uimm5:$shamt), []>;
+def PSLLH_128 : MMI128_Sh;
+def PSLLW_128 : MMI128_Sh;
+def PSRAH_128 : MMI128_Sh;
+def PSRAW_128 : MMI128_Sh;
+def PSRLH_128 : MMI128_Sh;
+def PSRLW_128 : MMI128_Sh;
 
 let mayLoad = 1 in
 def LQ_128 : PseudoSE<(outs GPR128:$rt), (ins mem:$addr), []>;
@@ -1184,6 +1202,12 @@ def SDT_MipsMMIPack : SDTypeProfile<1, 2, [SDTCisVT<0, v2i64>,
                                            SDTCisVT<1, i64>, SDTCisSameAs<1, 2>]>;
 def SDT_MipsMMIPart : SDTypeProfile<1, 1, [SDTCisVT<0, i64>, SDTCisVT<1, v2i64>]>;
 def MipsMMIPack : SDNode<"MipsISD::MMIPack", SDT_MipsMMIPack>;
+def SDT_MipsMMIShift : SDTypeProfile<1, 2, [SDTCisVec<0>, SDTCisSameAs<0, 1>,
+                                            SDTCisVT<2, i32>]>;
+def MipsMMINot : SDNode<"MipsISD::MMINot", SDTIntUnaryOp>;
+def MipsMMIShl : SDNode<"MipsISD::MMIShl", SDT_MipsMMIShift>;
+def MipsMMISra : SDNode<"MipsISD::MMISra", SDT_MipsMMIShift>;
+def MipsMMISrl : SDNode<"MipsISD::MMISrl", SDT_MipsMMIShift>;
 def MipsMMILo : SDNode<"MipsISD::MMILo", SDT_MipsMMIPart>;
 def MipsMMIHi : SDNode<"MipsISD::MMIHi", SDT_MipsMMIPart>;
 
@@ -1244,6 +1268,39 @@ def : MMI128Bin<add, v4i32, PADDW_128>;
 def : MMI128Bin<sub, v16i8, PSUBB_128>;
 def : MMI128Bin<sub, v8i16, PSUBH_128>;
 def : MMI128Bin<sub, v4i32, PSUBW_128>;
+foreach VT = [v16i8, v8i16, v4i32] in
+  def : MipsPat<(MipsMMINot VT:$rs),
+                (COPY_TO_REGCLASS (PNOR_128 (COPY_TO_REGCLASS VT:$rs, GPR128),
+                                            (COPY_TO_REGCLASS VT:$rs, GPR128)),
+                                  GPR128)>;
+def : MMI128Bin<smax, v8i16, PMAXH_128>;
+def : MMI128Bin<smax, v4i32, PMAXW_128>;
+def : MMI128Bin<smin, v8i16, PMINH_128>;
+def : MMI128Bin<smin, v4i32, PMINW_128>;
+
+class MMI128Cmp<ValueType VT, CondCode CC, Instruction I>
+    : MipsPat<(VT (setcc VT:$rs, VT:$rt, CC)),
+              (COPY_TO_REGCLASS (I (COPY_TO_REGCLASS VT:$rs, GPR128),
+                                   (COPY_TO_REGCLASS VT:$rt, GPR128)),
+                                GPR128)>;
+def : MMI128Cmp<v16i8, SETEQ, PCEQB_128>;
+def : MMI128Cmp<v8i16, SETEQ, PCEQH_128>;
+def : MMI128Cmp<v4i32, SETEQ, PCEQW_128>;
+def : MMI128Cmp<v16i8, SETGT, PCGTB_128>;
+def : MMI128Cmp<v8i16, SETGT, PCGTH_128>;
+def : MMI128Cmp<v4i32, SETGT, PCGTW_128>;
+
+class MMI128Shift<SDPatternOperator Op, ValueType VT, Instruction I>
+    : MipsPat<(Op VT:$rt, immZExt5:$sh),
+              (COPY_TO_REGCLASS (I (COPY_TO_REGCLASS VT:$rt, GPR128),
+                                   immZExt5:$sh),
+                                GPR128)>;
+def : MMI128Shift<MipsMMIShl, v8i16, PSLLH_128>;
+def : MMI128Shift<MipsMMIShl, v4i32, PSLLW_128>;
+def : MMI128Shift<MipsMMISra, v8i16, PSRAH_128>;
+def : MMI128Shift<MipsMMISra, v4i32, PSRAW_128>;
+def : MMI128Shift<MipsMMISrl, v8i16, PSRLH_128>;
+def : MMI128Shift<MipsMMISrl, v4i32, PSRLW_128>;
 }
 
 // di/ei (disable/enable interrupts) and sync.p: found missing, same way

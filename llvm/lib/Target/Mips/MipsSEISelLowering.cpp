@@ -375,6 +375,12 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
       setOperationAction({ISD::LOAD, ISD::STORE}, VT, Custom);
       if (VT != MVT::v2i64)
         setOperationAction({ISD::ADD, ISD::SUB}, VT, Legal);
+      if (VT != MVT::v2i64 && VT != MVT::v16i8) {
+        setOperationAction({ISD::SMAX, ISD::SMIN}, VT, Legal);
+        setOperationAction({ISD::SHL, ISD::SRA, ISD::SRL}, VT, Custom);
+      }
+      if (VT != MVT::v2i64)
+        setOperationAction(ISD::SETCC, VT, Custom);
     }
   }
 
@@ -624,6 +630,10 @@ SDValue MipsSETargetLowering::LowerOperation(SDValue Op,
   case ISD::INTRINSIC_VOID:     return lowerINTRINSIC_VOID(Op, DAG);
   case ISD::EXTRACT_VECTOR_ELT: return lowerEXTRACT_VECTOR_ELT(Op, DAG);
   case ISD::BUILD_VECTOR:       return lowerBUILD_VECTOR(Op, DAG);
+  case ISD::SETCC:              return lowerMMISetCC(Op, DAG);
+  case ISD::SHL:
+  case ISD::SRA:
+  case ISD::SRL:                return lowerMMIShift(Op, DAG);
   case ISD::VECTOR_SHUFFLE:     return lowerVECTOR_SHUFFLE(Op, DAG);
   case ISD::SELECT:
     return lowerSELECT(Op, DAG);
@@ -1340,6 +1350,79 @@ getOpndList(SmallVectorImpl<SDValue> &Ops,
   MipsTargetLowering::getOpndList(Ops, RegsToPass, IsPICCall, GlobalOrExternal,
                                   InternalLinkage, IsCallReloc, CLI, Callee,
                                   Chain);
+}
+
+SDValue MipsSETargetLowering::lowerMMISetCC(SDValue Op,
+                                            SelectionDAG &DAG) const {
+  EVT VT = Op.getValueType();
+  if (!Subtarget.isR5900() || Subtarget.hasMSA() || !VT.isVector())
+    return MipsTargetLowering::LowerOperation(Op, DAG);
+  SDLoc DL(Op);
+  SDValue A = Op.getOperand(0), B = Op.getOperand(1);
+  ISD::CondCode CC = cast<CondCodeSDNode>(Op.getOperand(2))->get();
+
+  // Only eq and signed gt exist; the rest are built from them.
+  if (ISD::isUnsignedIntSetCC(CC)) {
+    SDValue Ones = DAG.getAllOnesConstant(DL, VT);
+    SDValue Sign;
+    if (VT == MVT::v16i8) {
+      SDValue H = DAG.getNode(
+          MipsISD::MMIShl, DL, MVT::v8i16,
+          DAG.getNode(ISD::BITCAST, DL, MVT::v8i16, Ones),
+          DAG.getConstant(15, DL, MVT::i32));
+      SDValue L = DAG.getNode(MipsISD::MMISrl, DL, MVT::v8i16, H,
+                              DAG.getConstant(8, DL, MVT::i32));
+      Sign = DAG.getNode(ISD::BITCAST, DL, VT,
+                         DAG.getNode(ISD::OR, DL, MVT::v8i16, H, L));
+    } else {
+      Sign = DAG.getNode(
+          MipsISD::MMIShl, DL, VT, Ones,
+          DAG.getConstant(VT.getScalarSizeInBits() - 1, DL, MVT::i32));
+    }
+    A = DAG.getNode(ISD::XOR, DL, VT, A, Sign);
+    B = DAG.getNode(ISD::XOR, DL, VT, B, Sign);
+    switch (CC) {
+    case ISD::SETULT: CC = ISD::SETLT; break;
+    case ISD::SETULE: CC = ISD::SETLE; break;
+    case ISD::SETUGT: CC = ISD::SETGT; break;
+    default:          CC = ISD::SETGE; break;
+    }
+  }
+
+  switch (CC) {
+  case ISD::SETEQ:
+  case ISD::SETGT:
+    return DAG.getSetCC(DL, VT, A, B, CC);
+  case ISD::SETLT:
+    return DAG.getSetCC(DL, VT, B, A, ISD::SETGT);
+  case ISD::SETGE:
+    return DAG.getNode(MipsISD::MMINot, DL, VT,
+                       DAG.getSetCC(DL, VT, B, A, ISD::SETGT));
+  case ISD::SETLE:
+    return DAG.getNode(MipsISD::MMINot, DL, VT,
+                       DAG.getSetCC(DL, VT, A, B, ISD::SETGT));
+  default:
+    return DAG.getNode(MipsISD::MMINot, DL, VT,
+                       DAG.getSetCC(DL, VT, A, B, ISD::SETEQ));
+  }
+}
+
+SDValue MipsSETargetLowering::lowerMMIShift(SDValue Op,
+                                            SelectionDAG &DAG) const {
+  EVT VT = Op.getValueType();
+  if (!Subtarget.isR5900() || Subtarget.hasMSA() || !VT.isVector())
+    return MipsTargetLowering::LowerOperation(Op, DAG);
+  APInt Amt;
+  if (!ISD::isConstantSplatVector(Op.getOperand(1).getNode(), Amt) ||
+      Amt.uge(VT.getScalarSizeInBits()))
+    return SDValue();
+
+  unsigned Opc = Op.getOpcode() == ISD::SHL   ? MipsISD::MMIShl
+                 : Op.getOpcode() == ISD::SRA ? MipsISD::MMISra
+                                              : MipsISD::MMISrl;
+  SDLoc DL(Op);
+  return DAG.getNode(Opc, DL, VT, Op.getOperand(0),
+                     DAG.getConstant(Amt.getZExtValue(), DL, MVT::i32));
 }
 
 SDValue MipsSETargetLowering::lowerLOAD(SDValue Op, SelectionDAG &DAG) const {

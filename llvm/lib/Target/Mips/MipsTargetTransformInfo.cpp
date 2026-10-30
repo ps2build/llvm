@@ -28,7 +28,7 @@ unsigned MipsTTIImpl::getMaxInterleaveFactor(ElementCount VF,
 // A 16-byte aligned 128-bit vector is one lq/sq; an unaligned one is two
 // ldl/ldr (sdl/sdr) pairs joined or split by pcpyld/pcpyud; the cost is
 // set from rig timings, where a 4 x i32 add loop on unaligned data ran 39%
-// slower than scalar. An access aligned to its element is costed as aligned
+// slower than scalar. A 32-bit-element access aligned to its element is costed as aligned
 // because MipsMMIAlign versions the vector loop on a run-time check.
 InstructionCost MipsTTIImpl::getMemoryOpCost(
     unsigned Opcode, Type *Src, Align Alignment, unsigned AddressSpace,
@@ -39,9 +39,9 @@ InstructionCost MipsTTIImpl::getMemoryOpCost(
       VTy->getPrimitiveSizeInBits().getFixedValue() == 128 &&
       (Opcode == Instruction::Load || Opcode == Instruction::Store))
     return Alignment >= Align(16) ||
-                   Alignment.value() >= VTy->getScalarSizeInBits() / 8
+                   (VTy->getScalarSizeInBits() == 32 && Alignment >= Align(4))
                ? 1
-               : 12;
+               : 24;
   return BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, CostKind,
                                 OpInfo, I);
 }

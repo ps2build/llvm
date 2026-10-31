@@ -1205,6 +1205,7 @@ def MipsMMIPack : SDNode<"MipsISD::MMIPack", SDT_MipsMMIPack>;
 def SDT_MipsMMIShift : SDTypeProfile<1, 2, [SDTCisVec<0>, SDTCisSameAs<0, 1>,
                                             SDTCisVT<2, i32>]>;
 def MipsMMINot : SDNode<"MipsISD::MMINot", SDTIntUnaryOp>;
+def MipsMMIGt : SDNode<"MipsISD::MMIGt", SDTIntBinOp>;
 def MipsMMIShl : SDNode<"MipsISD::MMIShl", SDT_MipsMMIShift>;
 def MipsMMISra : SDNode<"MipsISD::MMISra", SDT_MipsMMIShift>;
 def MipsMMISrl : SDNode<"MipsISD::MMISrl", SDT_MipsMMIShift>;
@@ -1286,9 +1287,14 @@ class MMI128Cmp<ValueType VT, CondCode CC, Instruction I>
 def : MMI128Cmp<v16i8, SETEQ, PCEQB_128>;
 def : MMI128Cmp<v8i16, SETEQ, PCEQH_128>;
 def : MMI128Cmp<v4i32, SETEQ, PCEQW_128>;
-def : MMI128Cmp<v16i8, SETGT, PCGTB_128>;
-def : MMI128Cmp<v8i16, SETGT, PCGTH_128>;
-def : MMI128Cmp<v4i32, SETGT, PCGTW_128>;
+class MMI128Gt<ValueType VT, Instruction I>
+    : MipsPat<(VT (MipsMMIGt VT:$rs, VT:$rt)),
+              (COPY_TO_REGCLASS (I (COPY_TO_REGCLASS VT:$rs, GPR128),
+                                   (COPY_TO_REGCLASS VT:$rt, GPR128)),
+                                GPR128)>;
+def : MMI128Gt<v16i8, PCGTB_128>;
+def : MMI128Gt<v8i16, PCGTH_128>;
+def : MMI128Gt<v4i32, PCGTW_128>;
 
 class MMI128Shift<SDPatternOperator Op, ValueType VT, Instruction I>
     : MipsPat<(Op VT:$rt, immZExt5:$sh),

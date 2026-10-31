@@ -1389,18 +1389,20 @@ SDValue MipsSETargetLowering::lowerMMISetCC(SDValue Op,
     }
   }
 
+  auto Gt = [&](SDValue L, SDValue R) {
+    return DAG.getNode(MipsISD::MMIGt, DL, VT, L, R);
+  };
   switch (CC) {
   case ISD::SETEQ:
-  case ISD::SETGT:
     return DAG.getSetCC(DL, VT, A, B, CC);
+  case ISD::SETGT:
+    return Gt(A, B);
   case ISD::SETLT:
-    return DAG.getSetCC(DL, VT, B, A, ISD::SETGT);
+    return Gt(B, A);
   case ISD::SETGE:
-    return DAG.getNode(MipsISD::MMINot, DL, VT,
-                       DAG.getSetCC(DL, VT, B, A, ISD::SETGT));
+    return DAG.getNode(MipsISD::MMINot, DL, VT, Gt(B, A));
   case ISD::SETLE:
-    return DAG.getNode(MipsISD::MMINot, DL, VT,
-                       DAG.getSetCC(DL, VT, A, B, ISD::SETGT));
+    return DAG.getNode(MipsISD::MMINot, DL, VT, Gt(A, B));
   default:
     return DAG.getNode(MipsISD::MMINot, DL, VT,
                        DAG.getSetCC(DL, VT, A, B, ISD::SETEQ));

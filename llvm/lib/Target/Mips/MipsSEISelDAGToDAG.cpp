@@ -1095,17 +1095,30 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
                                             MVT::i128, V, RC),
                      0);
     };
-    SmallVector<SDValue, 8> Ops;
-    for (const SDValue &Op : Node->op_values())
-      Ops.push_back(ToGPR(Op));
-    SDNode *M = CurDAG->getMachineNode(Mips::PMULTH_128, DL, MVT::i128,
-                                       MVT::i128, Ops);
+    // Every operand of a chain is live at once, so long sums are split into
+    // chains of a few products whose results are added.
+    const unsigned MaxOps = 12;
+    SDValue Sum[2];
+    for (unsigned Begin = 0, N = Node->getNumOperands(); Begin < N;
+         Begin += MaxOps) {
+      SmallVector<SDValue, 12> Ops;
+      for (unsigned I = Begin, E = std::min(N, Begin + MaxOps); I != E; ++I)
+        Ops.push_back(ToGPR(Node->getOperand(I)));
+      SDNode *M = CurDAG->getMachineNode(Mips::PMULTH_128, DL, MVT::i128,
+                                         MVT::i128, Ops);
+      for (unsigned I = 0; I != 2; ++I)
+        Sum[I] = Begin == 0 ? SDValue(M, I)
+                            : SDValue(CurDAG->getMachineNode(
+                                          Mips::PADDW_128, DL, MVT::i128,
+                                          Sum[I], SDValue(M, I)),
+                                      0);
+    }
     for (unsigned I = 0; I != 2; ++I) {
       SDValue RC = CurDAG->getTargetConstant(Mips::MSA128WRegClassID, DL,
                                              MVT::i32);
       SDValue R = SDValue(CurDAG->getMachineNode(
                               TargetOpcode::COPY_TO_REGCLASS, DL, MVT::v4i32,
-                              SDValue(M, I), RC),
+                              Sum[I], RC),
                           0);
       ReplaceUses(SDValue(Node, I), R);
     }

@@ -1328,21 +1328,23 @@ static SDValue performMMIMulHAddCombine(SDNode *N, SelectionDAG &DAG,
   if (!matchMMIMulHJoin(N->getOperand(0), L0, H0) ||
       !matchMMIMulHJoin(N->getOperand(1), L1, H1))
     return SDValue();
-  SDNode *M0 = L0.getNode(), *M1 = L1.getNode();
-  if (M0->getOpcode() != MipsISD::MMIMulH ||
-      M1->getOpcode() != MipsISD::MMIMulH || H0.getNode() != M0 ||
-      H1.getNode() != M1 || L0.getResNo() != 0 || H0.getResNo() != 1 ||
-      L1.getResNo() != 0 || H1.getResNo() != 1 || M0 == M1)
-    return SDValue();
-  // Every operand of the chain is live at once, so keep the chains short.
-  if (M0->getNumOperands() + M1->getNumOperands() > 8)
-    return SDValue();
-  // Only when nobody else needs the separate sums.
   if (!N->getOperand(0).hasOneUse() || !N->getOperand(1).hasOneUse())
     return SDValue();
-  SmallVector<SDValue, 8> Ops(M0->op_begin(), M0->op_end());
-  Ops.append(M1->op_begin(), M1->op_end());
   SDLoc DL(N);
+  SDNode *M0 = L0.getNode(), *M1 = L1.getNode();
+  bool Fusable = M0 != M1 && M0->getOpcode() == MipsISD::MMIMulH &&
+                 M1->getOpcode() == MipsISD::MMIMulH && H0.getNode() == M0 &&
+                 H1.getNode() == M1 && L0.getResNo() == 0 &&
+                 H0.getResNo() == 1 && L1.getResNo() == 0 &&
+                 H1.getResNo() == 1;
+  if (!Fusable) {
+    // The lanes are permuted alike, so add them as they are.
+    SDValue Lo = DAG.getNode(ISD::ADD, DL, MVT::v4i32, L0, L1);
+    SDValue Hi = DAG.getNode(ISD::ADD, DL, MVT::v4i32, H0, H1);
+    return buildMMIMulHJoin(Lo, Hi, DL, DAG);
+  }
+  SmallVector<SDValue, 16> Ops(M0->op_begin(), M0->op_end());
+  Ops.append(M1->op_begin(), M1->op_end());
   SDValue Mul = DAG.getNode(MipsISD::MMIMulH, DL,
                             DAG.getVTList(MVT::v4i32, MVT::v4i32), Ops);
   return buildMMIMulHJoin(Mul.getValue(0), Mul.getValue(1), DL, DAG);

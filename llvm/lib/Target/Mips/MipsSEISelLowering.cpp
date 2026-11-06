@@ -203,7 +203,7 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
     setOperationAction(ISD::MUL,              MVT::i64, Legal);
   else if (Subtarget.isR5900()) {
     // R5900 doesn't have DMULT/DMULTU/DDIV/DDIVU - expand to 32-bit ops
-    setOperationAction(ISD::MUL, MVT::i64, Expand);
+    setOperationAction(ISD::MUL, MVT::i64, Custom);
     setOperationAction(ISD::SMUL_LOHI, MVT::i64, Expand);
     setOperationAction(ISD::UMUL_LOHI, MVT::i64, Expand);
     setOperationAction(ISD::MULHS, MVT::i64, Expand);
@@ -621,7 +621,10 @@ SDValue MipsSETargetLowering::LowerOperation(SDValue Op,
   case ISD::UMUL_LOHI: return lowerMulDiv(Op, MipsISD::Multu, true, true, DAG);
   case ISD::MULHS:     return lowerMulDiv(Op, MipsISD::Mult, false, true, DAG);
   case ISD::MULHU:     return lowerMulDiv(Op, MipsISD::Multu, false, true, DAG);
-  case ISD::MUL:       return lowerMulDiv(Op, MipsISD::Mult, true, false, DAG);
+  case ISD::MUL:
+    if (Subtarget.isR5900() && Op.getValueType() == MVT::i64)
+      return lowerR5900WideningMul(Op, DAG);
+    return lowerMulDiv(Op, MipsISD::Mult, true, false, DAG);
   case ISD::SDIVREM:   return lowerMulDiv(Op, MipsISD::DivRem, true, true, DAG);
   case ISD::UDIVREM:   return lowerMulDiv(Op, MipsISD::DivRemU, true, true,
                                           DAG);
@@ -1573,6 +1576,23 @@ SDValue MipsSETargetLowering::lowerBITCAST(SDValue Op,
 
   // Skip other cases of bitcast and use default lowering.
   return SDValue();
+}
+
+// PMULTW and PMULTUW write the 64-bit product of two words to a GPR, with no
+// MFLO/MFHI to combine the halves.
+SDValue MipsSETargetLowering::lowerR5900WideningMul(SDValue Op,
+                                                    SelectionDAG &DAG) const {
+  SDValue A = Op.getOperand(0), B = Op.getOperand(1);
+  SDLoc DL(Op);
+  unsigned Opc;
+  if (DAG.ComputeNumSignBits(A) > 32 && DAG.ComputeNumSignBits(B) > 32)
+    Opc = MipsISD::PMult;
+  else if (APInt High = APInt::getHighBitsSet(64, 32);
+           DAG.MaskedValueIsZero(A, High) && DAG.MaskedValueIsZero(B, High))
+    Opc = MipsISD::PMultu;
+  else
+    return SDValue();
+  return DAG.getNode(Opc, DL, MVT::i64, A, B);
 }
 
 SDValue MipsSETargetLowering::lowerMulDiv(SDValue Op, unsigned NewOpc,

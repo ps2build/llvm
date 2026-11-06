@@ -1975,8 +1975,11 @@ def P_PMULTH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
   let Inst{10-6} = 0x1c;
   let Inst{5-0} = 0x09;
 }
+let Defs = [HI0, LO0] in
 def P_PMULTUW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
-                 "pmultuw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+                 "pmultuw	$rd, $rs, $rt",
+                 [(set GPR64Opnd:$rd, (MipsPMultu GPR64Opnd:$rs, GPR64Opnd:$rt))],
+                 FrmOther>, StdArch {
   bits<5> rd;
   bits<5> rs;
   bits<5> rt;
@@ -1987,8 +1990,11 @@ def P_PMULTUW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
   let Inst{10-6} = 0xc;
   let Inst{5-0} = 0x29;
 }
+let Defs = [HI0, LO0] in
 def P_PMULTW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
-                 "pmultw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+                 "pmultw	$rd, $rs, $rt",
+                 [(set GPR64Opnd:$rd, (MipsPMult GPR64Opnd:$rs, GPR64Opnd:$rt))],
+                 FrmOther>, StdArch {
   bits<5> rd;
   bits<5> rs;
   bits<5> rt;

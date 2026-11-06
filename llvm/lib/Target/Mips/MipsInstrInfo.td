@@ -115,6 +115,10 @@ def MipsMTLOHI : SDNode<"MipsISD::MTLOHI", SDT_MTLOHI>;
 def MipsMult  : SDNode<"MipsISD::Mult", SDT_MipsMultDiv>;
 def MipsMultu : SDNode<"MipsISD::Multu", SDT_MipsMultDiv>;
 
+// R5900 widening multiplies that write a GPR64 instead of HI/LO.
+def MipsPMult  : SDNode<"MipsISD::PMult", SDTIntBinOp>;
+def MipsPMultu : SDNode<"MipsISD::PMultu", SDTIntBinOp>;
+
 // MAdd*/MSub* nodes
 def MipsMAdd  : SDNode<"MipsISD::MAdd", SDT_MipsMAddMSub>;
 def MipsMAddu : SDNode<"MipsISD::MAddu", SDT_MipsMAddMSub>;

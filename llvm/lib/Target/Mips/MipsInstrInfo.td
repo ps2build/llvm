@@ -2584,6 +2584,12 @@ let AdditionalPredicates = [NotInMicroMips] in {
   def PREF :  MMRel, CacheOp<"pref", mem>, CACHEOP_FM<0b110011>,
               INSN_MIPS3_32_NOT_32R6_64R6;
 }
+
+let AdditionalPredicates = [NotInMicroMips] in {
+  let EncodingPredicates = [HasStdEnc], InsnPredicates = [IsR5900] in
+    def : MipsPat<(prefetch addr:$addr, timm, timm, (i32 1)),
+                  (PREF addr:$addr, 0)>;
+}
 // FIXME: We are missing the prefx instruction.
 def ROL : MipsAsmPseudoInst<(outs),
                             (ins GPR32Opnd:$rs, GPR32Opnd:$rt, GPR32Opnd:$rd),

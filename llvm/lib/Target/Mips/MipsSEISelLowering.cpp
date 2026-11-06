@@ -237,6 +237,9 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
   }
 
   setTargetDAGCombine(ISD::MUL);
+  if (Subtarget.isR5900())
+    setTargetDAGCombine({ISD::SIGN_EXTEND, ISD::ZERO_EXTEND, ISD::ANY_EXTEND,
+                         ISD::TRUNCATE});
 
   setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
   setOperationAction(ISD::INTRINSIC_W_CHAIN, MVT::Other, Custom);
@@ -1219,6 +1222,76 @@ static SDValue performFP_TO_UINTCombine(SDNode *N, SelectionDAG &DAG) {
   return DAG.getNode(ISD::FP_TO_SINT, SDLoc(N), VT, Src);
 }
 
+/// R5900: extend a v8i16 or v16i8 to elements two or four times as wide by
+/// interleaving it with zero (zero or any extension) or with itself followed
+/// by an arithmetic shift (sign extension), one half of the source per step.
+static void extendMMI(SDValue Src, bool Signed, const SDLoc &DL,
+                      SelectionDAG &DAG, SmallVectorImpl<SDValue> &Out) {
+  EVT VT = Src.getValueType();
+  EVT WideVT = VT == MVT::v8i16 ? MVT::v4i32 : MVT::v8i16;
+  SDValue Other = Signed ? Src : DAG.getConstant(0, DL, VT);
+  for (unsigned Opc : {MipsISD::MMIExtLo, MipsISD::MMIExtHi}) {
+    SDValue V = DAG.getBitcast(WideVT, DAG.getNode(Opc, DL, VT, Other, Src));
+    if (Signed)
+      V = DAG.getNode(ISD::SRA, DL, WideVT, V,
+                      DAG.getConstant(VT.getScalarSizeInBits(), DL, WideVT));
+    Out.push_back(V);
+  }
+}
+
+static SDValue performMMIExtendCombine(SDNode *N, SelectionDAG &DAG,
+                                       TargetLowering::DAGCombinerInfo &DCI,
+                                       const MipsSubtarget &Subtarget) {
+  SDValue Src = N->getOperand(0);
+  EVT VT = N->getValueType(0);
+  EVT SrcVT = Src.getValueType();
+  if (!DCI.isBeforeLegalize() || !Subtarget.isR5900() || Subtarget.hasMSA() ||
+      (SrcVT != MVT::v8i16 && SrcVT != MVT::v16i8) || !VT.isSimple() ||
+      VT.getScalarSizeInBits() > 32)
+    return SDValue();
+  SDLoc DL(N);
+  bool Signed = N->getOpcode() == ISD::SIGN_EXTEND;
+  SmallVector<SDValue, 4> Parts;
+  extendMMI(Src, Signed, DL, DAG, Parts);
+  if (Parts[0].getScalarValueSizeInBits() != VT.getScalarSizeInBits()) {
+    // Bytes to words: extend each half again.
+    SmallVector<SDValue, 4> Words;
+    for (SDValue Half : Parts)
+      extendMMI(Half, Signed, DL, DAG, Words);
+    Parts = Words;
+  }
+  return DAG.getNode(ISD::CONCAT_VECTORS, DL, VT, Parts);
+}
+
+/// Pack the even elements of the two halves of \p Src into \p VT, in steps
+/// when the source elements are more than twice as wide.
+static SDValue truncateMMI(SDValue Src, EVT VT, const SDLoc &DL,
+                           SelectionDAG &DAG) {
+  unsigned Bits = VT.getScalarSizeInBits();
+  auto [Lo, Hi] = DAG.SplitVector(Src, DL);
+  if (Src.getScalarValueSizeInBits() > 2 * Bits) {
+    EVT MidVT = EVT::getVectorVT(*DAG.getContext(),
+                                 MVT::getIntegerVT(2 * Bits),
+                                 VT.getVectorNumElements() / 2);
+    Lo = truncateMMI(Lo, MidVT, DL, DAG);
+    Hi = truncateMMI(Hi, MidVT, DL, DAG);
+  }
+  return DAG.getNode(MipsISD::MMIPackEven, DL, VT, Hi, Lo);
+}
+
+static SDValue performMMITruncateCombine(SDNode *N, SelectionDAG &DAG,
+                                         TargetLowering::DAGCombinerInfo &DCI,
+                                         const MipsSubtarget &Subtarget) {
+  EVT VT = N->getValueType(0);
+  SDValue Src = N->getOperand(0);
+  EVT SrcVT = Src.getValueType();
+  if (!DCI.isBeforeLegalize() || !Subtarget.isR5900() || Subtarget.hasMSA() ||
+      (VT != MVT::v8i16 && VT != MVT::v16i8) || !SrcVT.isSimple() ||
+      SrcVT.getScalarSizeInBits() > 32)
+    return SDValue();
+  return truncateMMI(Src, VT, SDLoc(N), DAG);
+}
+
 SDValue
 MipsSETargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
   SelectionDAG &DAG = DCI.DAG;
@@ -1247,6 +1320,14 @@ MipsSETargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
     break;
   case ISD::SETCC:
     Val = performSETCCCombine(N, DAG);
+    break;
+  case ISD::SIGN_EXTEND:
+  case ISD::ZERO_EXTEND:
+  case ISD::ANY_EXTEND:
+    Val = performMMIExtendCombine(N, DAG, DCI, Subtarget);
+    break;
+  case ISD::TRUNCATE:
+    Val = performMMITruncateCombine(N, DAG, DCI, Subtarget);
     break;
   case ISD::FP_TO_UINT:
     Val = performFP_TO_UINTCombine(N, DAG);

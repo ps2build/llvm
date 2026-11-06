@@ -1183,6 +1183,12 @@ def PMAXH_128 : MMI128_3R;
 def PMAXW_128 : MMI128_3R;
 def PMINH_128 : MMI128_3R;
 def PMINW_128 : MMI128_3R;
+def PEXTLB_128 : MMI128_3R;
+def PEXTUB_128 : MMI128_3R;
+def PEXTLH_128 : MMI128_3R;
+def PEXTUH_128 : MMI128_3R;
+def PPACB_128 : MMI128_3R;
+def PPACH_128 : MMI128_3R;
 
 class MMI128_Sh : PseudoSE<(outs GPR128:$rd), (ins GPR128:$rt, uimm5:$shamt), []>;
 def PSLLH_128 : MMI128_Sh;
@@ -1209,6 +1215,12 @@ def MipsMMIGt : SDNode<"MipsISD::MMIGt", SDTIntBinOp>;
 def MipsMMIShl : SDNode<"MipsISD::MMIShl", SDT_MipsMMIShift>;
 def MipsMMISra : SDNode<"MipsISD::MMISra", SDT_MipsMMIShift>;
 def MipsMMISrl : SDNode<"MipsISD::MMISrl", SDT_MipsMMIShift>;
+// Interleave the low or high halves of two vectors, the first operand
+// supplying the odd elements (PEXTL*, PEXTU*), and pack the even elements of
+// two vectors, the first operand going to the high half (PPAC*).
+def MipsMMIExtLo : SDNode<"MipsISD::MMIExtLo", SDTIntBinOp>;
+def MipsMMIExtHi : SDNode<"MipsISD::MMIExtHi", SDTIntBinOp>;
+def MipsMMIPackEven : SDNode<"MipsISD::MMIPackEven", SDTIntBinOp>;
 def MipsMMILo : SDNode<"MipsISD::MMILo", SDT_MipsMMIPart>;
 def MipsMMIHi : SDNode<"MipsISD::MMIHi", SDT_MipsMMIPart>;
 
@@ -1278,6 +1290,22 @@ def : MMI128Bin<smax, v8i16, PMAXH_128>;
 def : MMI128Bin<smax, v4i32, PMAXW_128>;
 def : MMI128Bin<smin, v8i16, PMINH_128>;
 def : MMI128Bin<smin, v4i32, PMINW_128>;
+
+// The zero vector is $zero in all 128 bits.
+class MMI128Ext<SDPatternOperator Op, ValueType VT, Instruction I>
+    : MipsPat<(Op immAllZerosV, VT:$rt),
+              (COPY_TO_REGCLASS (I GPR128_0, (COPY_TO_REGCLASS VT:$rt, GPR128)),
+                                GPR128)>;
+def : MMI128Bin<MipsMMIExtLo, v16i8, PEXTLB_128>;
+def : MMI128Bin<MipsMMIExtHi, v16i8, PEXTUB_128>;
+def : MMI128Bin<MipsMMIExtLo, v8i16, PEXTLH_128>;
+def : MMI128Bin<MipsMMIExtHi, v8i16, PEXTUH_128>;
+def : MMI128Bin<MipsMMIPackEven, v16i8, PPACB_128>;
+def : MMI128Bin<MipsMMIPackEven, v8i16, PPACH_128>;
+def : MMI128Ext<MipsMMIExtLo, v16i8, PEXTLB_128>;
+def : MMI128Ext<MipsMMIExtHi, v16i8, PEXTUB_128>;
+def : MMI128Ext<MipsMMIExtLo, v8i16, PEXTLH_128>;
+def : MMI128Ext<MipsMMIExtHi, v8i16, PEXTUH_128>;
 
 class MMI128Cmp<ValueType VT, CondCode CC, Instruction I>
     : MipsPat<(VT (setcc VT:$rs, VT:$rt, CC)),

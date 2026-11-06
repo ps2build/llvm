@@ -518,6 +518,24 @@ bool MipsSEInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   case Mips::PCGTW_128:
     expandMMI128(MBB, MI, Mips::P_PCGTW);
     break;
+  case Mips::PEXTLB_128:
+    expandMMI128(MBB, MI, Mips::P_PEXTLB);
+    break;
+  case Mips::PEXTUB_128:
+    expandMMI128(MBB, MI, Mips::P_PEXTUB);
+    break;
+  case Mips::PEXTLH_128:
+    expandMMI128(MBB, MI, Mips::P_PEXTLH);
+    break;
+  case Mips::PEXTUH_128:
+    expandMMI128(MBB, MI, Mips::P_PEXTUH);
+    break;
+  case Mips::PPACB_128:
+    expandMMI128(MBB, MI, Mips::P_PPACB);
+    break;
+  case Mips::PPACH_128:
+    expandMMI128(MBB, MI, Mips::P_PPACH);
+    break;
   case Mips::PMAXH_128:
     expandMMI128(MBB, MI, Mips::P_PMAXH);
     break;

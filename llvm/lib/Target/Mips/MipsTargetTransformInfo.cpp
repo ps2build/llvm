@@ -25,12 +25,11 @@ unsigned MipsTTIImpl::getMaxInterleaveFactor(ElementCount VF,
   return BaseT::getMaxInterleaveFactor(VF, HasUnorderedReductions);
 }
 
-// A 16-byte aligned 128-bit vector is one lq/sq; an unaligned one is two
-// ldl/ldr (sdl/sdr) pairs joined or split by pcpyld/pcpyud; the cost is
-// set from rig timings, where a 4 x i32 add loop on unaligned data ran 39%
-// slower than scalar. A 32-bit-element access aligned to its element is
-// costed as aligned because MipsMMIAlign versions the vector loop on a
-// run-time check.
+// A 16-byte aligned 128-bit vector is one lq/sq; an unaligned one is an
+// ldl/ldr pair per half joined (or an sdl/sdr pair split) by pcpyld/pcpyud,
+// about 5 cycles to the use for a load and 4 for a store. A 32-bit-element
+// access aligned to its element is costed as aligned because MipsMMIAlign
+// versions the vector loop on a run-time check.
 InstructionCost MipsTTIImpl::getMemoryOpCost(
     unsigned Opcode, Type *Src, Align Alignment, unsigned AddressSpace,
     TTI::TargetCostKind CostKind, TTI::OperandValueInfo OpInfo,
@@ -42,7 +41,7 @@ InstructionCost MipsTTIImpl::getMemoryOpCost(
     return Alignment >= Align(16) ||
                    (VTy->getScalarSizeInBits() == 32 && Alignment >= Align(4))
                ? 1
-               : 24;
+               : (Opcode == Instruction::Load ? 5 : 4);
   return BaseT::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, CostKind,
                                 OpInfo, I);
 }
@@ -76,6 +75,44 @@ void MipsTTIImpl::getUnrollingPreferences(
   UP.PartialThreshold = 120;
 }
 
+bool MipsTTIImpl::shouldMaximizeVectorBandwidth(
+    TargetTransformInfo::RegisterKind K) const {
+  // Size the vector from the narrowest element of the loop, not the widest:
+  // MMI widens a byte or halfword register into several by interleaving, and
+  // packs several into one.
+  return ST->isR5900() && !ST->hasMSA() &&
+         K == TargetTransformInfo::RGK_FixedWidthVector;
+}
+
+InstructionCost MipsTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst,
+                                              Type *Src,
+                                              TTI::CastContextHint CCH,
+                                              TTI::TargetCostKind CostKind,
+                                              const Instruction *I) const {
+  // MMI widens and narrows integer vectors by interleaving with zero or
+  // itself (PEXT*, plus a shift to sign extend) and by packing (PPAC*): about
+  // one instruction per 128-bit register of the wider type and step.
+  auto *DstTy = dyn_cast<FixedVectorType>(Dst);
+  auto *SrcTy = dyn_cast<FixedVectorType>(Src);
+  if (ST->isR5900() && !ST->hasMSA() && DstTy && SrcTy &&
+      DstTy->getElementType()->isIntegerTy() &&
+      SrcTy->getElementType()->isIntegerTy() &&
+      (Opcode == Instruction::ZExt || Opcode == Instruction::SExt ||
+       Opcode == Instruction::Trunc)) {
+    unsigned DstBits = DstTy->getScalarSizeInBits();
+    unsigned SrcBits = SrcTy->getScalarSizeInBits();
+    unsigned Wide = std::max(DstBits, SrcBits);
+    unsigned Narrow = std::min(DstBits, SrcBits);
+    if (Wide <= 32 && Narrow >= 8 && DstBits != SrcBits) {
+      unsigned WideRegs = std::max<unsigned>(
+          1, (DstTy->getNumElements() * Wide + 127) / 128);
+      unsigned Steps = Log2_32(Wide / Narrow);
+      return WideRegs * Steps * (Opcode == Instruction::SExt ? 2 : 1);
+    }
+  }
+  return BaseT::getCastInstrCost(Opcode, Dst, Src, CCH, CostKind, I);
+}
+
 InstructionCost MipsTTIImpl::getArithmeticInstrCost(
     unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
     TTI::OperandValueInfo Op1Info, TTI::OperandValueInfo Op2Info,
@@ -100,7 +137,7 @@ InstructionCost MipsTTIImpl::getArithmeticInstrCost(
   if (auto *VTy = dyn_cast<FixedVectorType>(Ty);
       ST->isR5900() && !ST->hasMSA() && VTy &&
       VTy->getElementType()->isIntegerTy() &&
-      VTy->getPrimitiveSizeInBits().getFixedValue() == 128) {
+      VTy->getPrimitiveSizeInBits().getFixedValue() % 128 == 0) {
     unsigned EltBits = VTy->getScalarSizeInBits();
     bool InMMI;
     switch (Opcode) {

@@ -97,6 +97,12 @@ bool alignLoop(Loop &L, ScalarEvolution &SE, DominatorTree &DT, LoopInfo &LI,
     const SCEV *Start = AR->getStart();
     if (!Exp.isSafeToExpandAt(Start, Ph->getTerminator()))
       continue;
+    // A start a constant, non-multiple-of-16 offset from its base, as in
+    // a[1], is not aligned when the base is: leave it to ldl/ldr.
+    if (auto *Off = dyn_cast<SCEVConstant>(
+            SE.getMinusSCEV(Start, SE.getPointerBase(Start))))
+      if (Off->getAPInt().urem(16) != 0)
+        continue;
     Accesses.push_back(&I);
     if (!is_contained(Starts, Start))
       Starts.push_back(Start);

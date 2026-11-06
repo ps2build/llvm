@@ -54,6 +54,13 @@ public:
   bool isLSRCostLess(const TargetTransformInfo::LSRCost &C1,
                      const TargetTransformInfo::LSRCost &C2) const override;
 
+  bool shouldMaximizeVectorBandwidth(
+      TargetTransformInfo::RegisterKind K) const override;
+
+  InstructionCost getCastInstrCost(
+      unsigned Opcode, Type *Dst, Type *Src, TTI::CastContextHint CCH,
+      TTI::TargetCostKind CostKind, const Instruction *I = nullptr) const override;
+
   InstructionCost getArithmeticInstrCost(
       unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,
       TTI::OperandValueInfo Op1Info = {TTI::OK_AnyValue, TTI::OP_None},

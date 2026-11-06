@@ -39,21 +39,21 @@ exit:
 }
 
 ; The offset input is checked at its own start address, and the reduction
-; value reaches the scalar loop from the new block.
+; value reaches the scalar loop from the new block. The offset is not a constant here.
 ; IR-LABEL: @sum_off(
 ; IR: mmi.align.check:
 ; IR: getelementptr
 ; IR: ptrtoint
 ; IR: scalar.ph:
 ; IR: %bc.merge.rdx = phi i32 [ %{{.*}}, %middle.block ], [ 0, %{{.*}} ], [ 0, %mmi.align.check ]
-define i32 @sum_off(ptr noalias %a, i32 %n) {
+define i32 @sum_off(ptr noalias %a, i32 %k, i32 %n) {
 entry:
   %c = icmp sgt i32 %n, 0
   br i1 %c, label %loop, label %exit
 loop:
   %i = phi i32 [0, %entry], [%i1, %loop]
   %acc = phi i32 [0, %entry], [%acc1, %loop]
-  %j = add nuw nsw i32 %i, 1
+  %j = add nuw nsw i32 %i, %k
   %pa = getelementptr inbounds i32, ptr %a, i32 %j
   %x = load i32, ptr %pa, align 4
   %acc1 = add i32 %acc, %x
@@ -86,10 +86,14 @@ exit:
   ret void
 }
 
-; a[i] and a[i + 1] cannot both be aligned: the vector loop is bypassed.
+; a[i] and a[i + 1] cannot both be aligned: only a[i] is checked and marked,
+; a[i + 1] stays a 4-byte aligned access for ldl/ldr.
 ; IR-LABEL: @stencil(
 ; IR: mmi.align.check:
-; IR: br i1 true, label %scalar.ph, label %vector.ph
+; IR: and i32 %{{.*}}, 15
+; IR: br i1 %{{.*}}, label %scalar.ph, label %vector.ph
+; IR: load <4 x i32>, ptr %{{.*}}, align 16
+; IR: load <4 x i32>, ptr %{{.*}}, align 4
 define void @stencil(ptr noalias %d, ptr noalias %a, i32 %n) {
 entry:
   %c = icmp sgt i32 %n, 0
@@ -109,4 +113,27 @@ loop:
   br i1 %e, label %exit, label %loop
 exit:
   ret void
+}
+
+; A constant offset from the base is left to ldl/ldr: a start that is aligned
+; only when the base is not would never pass the check.
+; IR-LABEL: @const_off(
+; IR-NOT: mmi.align.check
+define i32 @const_off(ptr noalias %a, i32 %n) {
+entry:
+  %c = icmp sgt i32 %n, 0
+  br i1 %c, label %loop, label %exit
+loop:
+  %i = phi i32 [0, %entry], [%i1, %loop]
+  %acc = phi i32 [0, %entry], [%acc1, %loop]
+  %j = add nuw nsw i32 %i, 1
+  %pa = getelementptr inbounds i32, ptr %a, i32 %j
+  %x = load i32, ptr %pa, align 4
+  %acc1 = add i32 %acc, %x
+  %i1 = add nuw nsw i32 %i, 1
+  %e = icmp eq i32 %i1, %n
+  br i1 %e, label %exit, label %loop
+exit:
+  %r = phi i32 [0, %entry], [%acc1, %loop]
+  ret i32 %r
 }

@@ -1168,7 +1168,7 @@ def SQ : InstSE<(outs), (ins GPR64Opnd:$rt, mem:$addr), "sq\t$rt, $addr",
 def SDT_MipsMMIMulH : SDTypeProfile<2, -1, [SDTCisVT<0, v4i32>,
                                             SDTCisVT<1, v4i32>]>;
 def MipsMMIMulH : SDNode<"MipsISD::MMIMulH", SDT_MipsMMIMulH>;
-let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1 in {
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, hasSideEffects = 0 in {
 class MMI128_3R : PseudoSE<(outs GPR128:$rd), (ins GPR128:$rs, GPR128:$rt), []>;
 
 def PAND_128 : MMI128_3R;
@@ -1247,7 +1247,7 @@ def MipsMMIPackEven : SDNode<"MipsISD::MMIPackEven", SDTIntBinOp>;
 def MipsMMILo : SDNode<"MipsISD::MMILo", SDT_MipsMMIPart>;
 def MipsMMIHi : SDNode<"MipsISD::MMIHi", SDT_MipsMMIPart>;
 
-let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1 in {
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, hasSideEffects = 0 in {
 def PCPYLD_V : PseudoSE<(outs GPR128:$rd), (ins GPR64:$rs, GPR64:$rt), []>;
 def PLO_V : PseudoSE<(outs GPR64:$rd), (ins GPR128:$rs), []>;
 def PCPYUD_V : PseudoSE<(outs GPR64:$rd), (ins GPR128:$rs, GPR128:$rt), []>;

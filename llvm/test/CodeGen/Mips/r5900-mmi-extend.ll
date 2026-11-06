@@ -27,10 +27,10 @@ define void @sext_h_w(ptr align 16 %s, ptr align 16 %d) {
 
 ; Bytes to words extends twice.
 ; CHECK-LABEL: zext_b_w:
-; CHECK: pextlb
-; CHECK: pextlh
-; CHECK: pextuh
-; CHECK: pextub
+; CHECK-DAG: pextlb
+; CHECK-DAG: pextlh
+; CHECK-DAG: pextuh
+; CHECK-DAG: pextub
 define void @zext_b_w(ptr align 16 %s, ptr align 16 %d) {
   %v = load <16 x i8>, ptr %s, align 16
   %z = zext <16 x i8> %v to <16 x i32>

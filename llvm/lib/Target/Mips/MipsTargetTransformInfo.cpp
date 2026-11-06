@@ -80,14 +80,17 @@ void MipsTTIImpl::getUnrollingPreferences(
   // Rig timings: loops with a load of 4 bytes or more gain from unrolling;
   // byte loops are short and store-only loops lose to the scheduler.
   const DataLayout &DL = L->getHeader()->getDataLayout();
-  bool HasLoad = false;
+  // A narrow load feeding another load (a table lookup) is a latency chain
+  // that unrolling overlaps, so only lone narrow loads are left alone.
+  unsigned NumLoads = 0;
+  bool HasNarrow = false;
   for (const Instruction &I : *L->getHeader())
     if (const auto *LI = dyn_cast<LoadInst>(&I)) {
+      ++NumLoads;
       if (DL.getTypeStoreSize(LI->getType()) < 4)
-        return;
-      HasLoad = true;
+        HasNarrow = true;
     }
-  if (!HasLoad)
+  if (NumLoads == 0 || (HasNarrow && NumLoads < 2))
     return;
   UP.Partial = true;
   UP.Runtime = true;

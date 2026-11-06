@@ -35,6 +35,8 @@ public:
   TypeSize
   getRegisterBitWidth(TTI::RegisterKind K) const override;
 
+  unsigned getNumberOfRegisters(unsigned ClassID) const override;
+
   InstructionCost getMemoryOpCost(
       unsigned Opcode, Type *Src, Align Alignment, unsigned AddressSpace,
       TTI::TargetCostKind CostKind,

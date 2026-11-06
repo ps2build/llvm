@@ -18,12 +18,20 @@ TypeSize MipsTTIImpl::getRegisterBitWidth(TTI::RegisterKind K) const {
   return BaseT::getRegisterBitWidth(K);
 }
 
+unsigned MipsTTIImpl::getNumberOfRegisters(unsigned ClassID) const {
+  // The R5900 has 32 general registers; MMI vectors live in the same file.
+  // The base default of 8 makes the vectorizer cap interleaving too early.
+  if (ST->isR5900() && !ST->hasMSA())
+    return 32;
+  return BaseT::getNumberOfRegisters(ClassID);
+}
+
 unsigned MipsTTIImpl::getMaxInterleaveFactor(ElementCount VF,
                                             bool HasUnorderedReductions) const {
   // The in-order core stalls on the ldl/ldr -> pcpyld and pmaxh dependency
-  // chains; two independent vectors per iteration hide that latency.
+  // chains; four independent vectors per iteration hide that latency.
   if (ST->isR5900() && !ST->hasMSA())
-    return VF.isVector() ? 2 : 1;
+    return 4;
   return BaseT::getMaxInterleaveFactor(VF, HasUnorderedReductions);
 }
 

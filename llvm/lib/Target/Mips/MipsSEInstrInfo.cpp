@@ -554,6 +554,20 @@ bool MipsSEInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   case Mips::PSUBUW_128:
     expandMMI128(MBB, MI, Mips::P_PSUBUW);
     break;
+  case Mips::PMULTH_128: {
+    // PMULTH leaves the products in LO and HI; read both out.
+    const TargetRegisterInfo *TRI = &getRegisterInfo();
+    auto Sub = [&](unsigned Idx) {
+      return TRI->getSubReg(MI.getOperand(Idx).getReg(), Mips::sub_64);
+    };
+    DebugLoc DL = MI.getDebugLoc();
+    BuildMI(MBB, MI, DL, get(Mips::P_PMULTH), Sub(0))
+        .addReg(Sub(2), getKillRegState(MI.getOperand(2).isKill()))
+        .addReg(Sub(3), getKillRegState(MI.getOperand(3).isKill()));
+    BuildMI(MBB, MI, DL, get(Mips::P_PMFLO), Sub(0));
+    BuildMI(MBB, MI, DL, get(Mips::P_PMFHI), Sub(1));
+    break;
+  }
   case Mips::PEXTLB_128:
     expandMMI128(MBB, MI, Mips::P_PEXTLB);
     break;

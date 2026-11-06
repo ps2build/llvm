@@ -150,6 +150,15 @@ InstructionCost MipsTTIImpl::getArithmeticInstrCost(
       VTy->getElementType()->isIntegerTy() &&
       VTy->getPrimitiveSizeInBits().getFixedValue() % 128 == 0) {
     unsigned EltBits = VTy->getScalarSizeInBits();
+    // A widening 16x16->32 multiply of 8 lanes is one PMULTH, two moves out of
+    // HI/LO and the repacking of the halves.
+    if (Opcode == Instruction::Mul && VTy->getNumElements() == 8 &&
+        EltBits == 32 && Args.size() == 2 &&
+        all_of(Args, [](const Value *A) {
+          auto *Ext = dyn_cast<SExtInst>(A);
+          return Ext && Ext->getSrcTy()->getScalarSizeInBits() == 16;
+        }))
+      return 5;
     bool InMMI;
     switch (Opcode) {
     case Instruction::Add:
@@ -180,6 +189,25 @@ InstructionCost MipsTTIImpl::getArithmeticInstrCost(
   }
   return BaseT::getArithmeticInstrCost(Opcode, Ty, CostKind, Op1Info, Op2Info,
                                        Args, CxtI);
+}
+
+// A widening multiply is selected as PMULTH only when instruction selection
+// sees the extensions of its operands, so bring a hoisted sext back next to
+// the multiply rather than keeping a v8i32 copy live across the loop.
+bool MipsTTIImpl::isProfitableToSinkOperands(
+    Instruction *I, SmallVectorImpl<Use *> &Ops) const {
+  auto *VTy = dyn_cast<FixedVectorType>(I->getType());
+  if (!ST->isR5900() || ST->hasMSA() || I->getOpcode() != Instruction::Mul ||
+      !VTy || VTy->getNumElements() != 8 || VTy->getScalarSizeInBits() != 32)
+    return false;
+  for (Use &U : I->operands()) {
+    auto *Ext = dyn_cast<SExtInst>(U.get());
+    if (!Ext || Ext->getSrcTy()->getScalarSizeInBits() != 16)
+      return false;
+  }
+  for (Use &U : I->operands())
+    Ops.push_back(&U);
+  return true;
 }
 
 bool MipsTTIImpl::isLSRCostLess(const TargetTransformInfo::LSRCost &C1,

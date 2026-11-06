@@ -1243,12 +1243,58 @@ static void extendMMI(SDValue Src, bool Signed, const SDLoc &DL,
   }
 }
 
+// True for sext(v8i16) feeding a v8i32 multiply of two such values, which
+// PMULTH does on the 16-bit operands directly.
+static bool isMMIWideningMulOperand(SDValue V) {
+  if (V.getOpcode() != ISD::SIGN_EXTEND ||
+      V.getValueType() != MVT::v8i32 ||
+      V.getOperand(0).getValueType() != MVT::v8i16)
+    return false;
+  return true;
+}
+
+static SDValue performMMIWideningMulCombine(SDNode *N, SelectionDAG &DAG,
+                                            TargetLowering::DAGCombinerInfo &DCI,
+                                            const MipsSubtarget &Subtarget) {
+  if (!DCI.isBeforeLegalize() || !Subtarget.isR5900() || Subtarget.hasMSA() ||
+      N->getValueType(0) != MVT::v8i32 ||
+      !isMMIWideningMulOperand(N->getOperand(0)) ||
+      !isMMIWideningMulOperand(N->getOperand(1)))
+    return SDValue();
+  SDLoc DL(N);
+  SDVTList VTs = DAG.getVTList(MVT::v4i32, MVT::v4i32);
+  SDValue Mul = DAG.getNode(MipsISD::MMIMulH, DL, VTs,
+                            N->getOperand(0).getOperand(0),
+                            N->getOperand(1).getOperand(0));
+  // Products 0,1 | 2,3 and 4,5 | 6,7 are the low and high halves of LO and HI.
+  auto Half = [&](SDValue V, unsigned Part) {
+    SDValue W = DAG.getNode(ISD::BITCAST, DL, MVT::v2i64, V);
+    return DAG.getNode(Part ? MipsISD::MMIHi : MipsISD::MMILo, DL, MVT::i64, W);
+  };
+  auto Join = [&](SDValue Hi, SDValue Lo) {
+    return DAG.getNode(ISD::BITCAST, DL, MVT::v4i32,
+                       DAG.getNode(MipsISD::MMIPack, DL, MVT::v2i64, Hi, Lo));
+  };
+  SDValue Lo = Mul.getValue(0), Hi = Mul.getValue(1);
+  SDValue First = Join(Half(Hi, 0), Half(Lo, 0));
+  SDValue Second = Join(Half(Hi, 1), Half(Lo, 1));
+  return DAG.getNode(ISD::CONCAT_VECTORS, DL, MVT::v8i32, First, Second);
+}
+
 static SDValue performMMIExtendCombine(SDNode *N, SelectionDAG &DAG,
                                        TargetLowering::DAGCombinerInfo &DCI,
                                        const MipsSubtarget &Subtarget) {
   SDValue Src = N->getOperand(0);
   EVT VT = N->getValueType(0);
   EVT SrcVT = Src.getValueType();
+  // Leave the extends of a widening multiply for the multiply combine.
+  if (N->getOpcode() == ISD::SIGN_EXTEND && VT == MVT::v8i32 && N->hasOneUse()) {
+    SDNode *User = *N->user_begin();
+    if (User->getOpcode() == ISD::MUL && User->getValueType(0) == MVT::v8i32 &&
+        isMMIWideningMulOperand(User->getOperand(0)) &&
+        isMMIWideningMulOperand(User->getOperand(1)))
+      return SDValue();
+  }
   if (!DCI.isBeforeLegalize() || !Subtarget.isR5900() || Subtarget.hasMSA() ||
       (SrcVT != MVT::v8i16 && SrcVT != MVT::v16i8) || !VT.isSimple() ||
       VT.getScalarSizeInBits() > 32)
@@ -1309,6 +1355,8 @@ MipsSETargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
     Val = performORCombine(N, DAG, DCI, Subtarget);
     break;
   case ISD::MUL:
+    if (SDValue R = performMMIWideningMulCombine(N, DAG, DCI, Subtarget))
+      return R;
     return performMULCombine(N, DAG, DCI, this, Subtarget);
   case ISD::SHL:
     Val = performSHLCombine(N, DAG, DCI, Subtarget);

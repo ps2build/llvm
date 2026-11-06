@@ -1095,9 +1095,11 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
                                             MVT::i128, V, RC),
                      0);
     };
+    SmallVector<SDValue, 8> Ops;
+    for (const SDValue &Op : Node->op_values())
+      Ops.push_back(ToGPR(Op));
     SDNode *M = CurDAG->getMachineNode(Mips::PMULTH_128, DL, MVT::i128,
-                                       MVT::i128, ToGPR(Node->getOperand(0)),
-                                       ToGPR(Node->getOperand(1)));
+                                       MVT::i128, Ops);
     for (unsigned I = 0; I != 2; ++I) {
       SDValue RC = CurDAG->getTargetConstant(Mips::MSA128WRegClassID, DL,
                                              MVT::i32);

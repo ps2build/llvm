@@ -561,9 +561,13 @@ bool MipsSEInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
       return TRI->getSubReg(MI.getOperand(Idx).getReg(), Mips::sub_64);
     };
     DebugLoc DL = MI.getDebugLoc();
-    BuildMI(MBB, MI, DL, get(Mips::P_PMULTH), Sub(0))
-        .addReg(Sub(2), getKillRegState(MI.getOperand(2).isKill()))
-        .addReg(Sub(3), getKillRegState(MI.getOperand(3).isKill()));
+    // The first pair starts the sum, each further pair accumulates into it.
+    // The scratch destination is the (early clobber) low result.
+    for (unsigned I = 2, E = MI.getNumExplicitOperands(); I != E; I += 2)
+      BuildMI(MBB, MI, DL, get(I == 2 ? Mips::P_PMULTH : Mips::P_PMADDH),
+              Sub(0))
+          .addReg(Sub(I), getKillRegState(MI.getOperand(I).isKill()))
+          .addReg(Sub(I + 1), getKillRegState(MI.getOperand(I + 1).isKill()));
     BuildMI(MBB, MI, DL, get(Mips::P_PMFLO), Sub(0));
     BuildMI(MBB, MI, DL, get(Mips::P_PMFHI), Sub(1));
     break;

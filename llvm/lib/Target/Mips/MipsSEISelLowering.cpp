@@ -1253,6 +1253,23 @@ static bool isMMIWideningMulOperand(SDValue V) {
   return true;
 }
 
+// Put the products of PMULTH (LO and HI) back in element order.
+static SDValue buildMMIMulHJoin(SDValue Lo, SDValue Hi, const SDLoc &DL,
+                                SelectionDAG &DAG) {
+  // Products 0,1 | 2,3 and 4,5 | 6,7 are the low and high halves of LO and HI.
+  auto Half = [&](SDValue V, unsigned Part) {
+    SDValue W = DAG.getNode(ISD::BITCAST, DL, MVT::v2i64, V);
+    return DAG.getNode(Part ? MipsISD::MMIHi : MipsISD::MMILo, DL, MVT::i64, W);
+  };
+  auto Join = [&](SDValue H, SDValue L) {
+    return DAG.getNode(ISD::BITCAST, DL, MVT::v4i32,
+                       DAG.getNode(MipsISD::MMIPack, DL, MVT::v2i64, H, L));
+  };
+  SDValue First = Join(Half(Hi, 0), Half(Lo, 0));
+  SDValue Second = Join(Half(Hi, 1), Half(Lo, 1));
+  return DAG.getNode(ISD::CONCAT_VECTORS, DL, MVT::v8i32, First, Second);
+}
+
 static SDValue performMMIWideningMulCombine(SDNode *N, SelectionDAG &DAG,
                                             TargetLowering::DAGCombinerInfo &DCI,
                                             const MipsSubtarget &Subtarget) {
@@ -1266,19 +1283,69 @@ static SDValue performMMIWideningMulCombine(SDNode *N, SelectionDAG &DAG,
   SDValue Mul = DAG.getNode(MipsISD::MMIMulH, DL, VTs,
                             N->getOperand(0).getOperand(0),
                             N->getOperand(1).getOperand(0));
-  // Products 0,1 | 2,3 and 4,5 | 6,7 are the low and high halves of LO and HI.
-  auto Half = [&](SDValue V, unsigned Part) {
-    SDValue W = DAG.getNode(ISD::BITCAST, DL, MVT::v2i64, V);
-    return DAG.getNode(Part ? MipsISD::MMIHi : MipsISD::MMILo, DL, MVT::i64, W);
-  };
-  auto Join = [&](SDValue Hi, SDValue Lo) {
-    return DAG.getNode(ISD::BITCAST, DL, MVT::v4i32,
-                       DAG.getNode(MipsISD::MMIPack, DL, MVT::v2i64, Hi, Lo));
-  };
-  SDValue Lo = Mul.getValue(0), Hi = Mul.getValue(1);
-  SDValue First = Join(Half(Hi, 0), Half(Lo, 0));
-  SDValue Second = Join(Half(Hi, 1), Half(Lo, 1));
-  return DAG.getNode(ISD::CONCAT_VECTORS, DL, MVT::v8i32, First, Second);
+  return buildMMIMulHJoin(Mul.getValue(0), Mul.getValue(1), DL, DAG);
+}
+
+// Sums of widening multiplies stay in PMULTH's LO/HI lane order and are only
+// put in element order once. This matches a join made by buildMMIMulHJoin.
+static bool matchMMIMulHJoin(SDValue V, SDValue &Lo, SDValue &Hi) {
+  if (V.getOpcode() != ISD::CONCAT_VECTORS || V.getNumOperands() != 2)
+    return false;
+  SDValue L, H;
+  for (unsigned Part = 0; Part != 2; ++Part) {
+    SDValue B = V.getOperand(Part);
+    if (B.getOpcode() != ISD::BITCAST ||
+        B.getOperand(0).getOpcode() != MipsISD::MMIPack)
+      return false;
+    SDValue P = B.getOperand(0);
+    unsigned Want = Part ? MipsISD::MMIHi : MipsISD::MMILo;
+    SDValue A = P.getOperand(0), C = P.getOperand(1); // Hi-half, Lo-half
+    if (A.getOpcode() != Want || C.getOpcode() != Want ||
+        A.getOperand(0).getOpcode() != ISD::BITCAST ||
+        C.getOperand(0).getOpcode() != ISD::BITCAST)
+      return false;
+    SDValue AH = A.getOperand(0).getOperand(0);
+    SDValue CL = C.getOperand(0).getOperand(0);
+    if (Part == 0) {
+      H = AH;
+      L = CL;
+    } else if (H != AH || L != CL) {
+      return false;
+    }
+  }
+  Lo = L;
+  Hi = H;
+  return true;
+}
+
+static SDValue performMMIMulHAddCombine(SDNode *N, SelectionDAG &DAG,
+                                        TargetLowering::DAGCombinerInfo &DCI,
+                                        const MipsSubtarget &Subtarget) {
+  if (!DCI.isBeforeLegalize() || !Subtarget.isR5900() || Subtarget.hasMSA() ||
+      N->getValueType(0) != MVT::v8i32)
+    return SDValue();
+  SDValue L0, H0, L1, H1;
+  if (!matchMMIMulHJoin(N->getOperand(0), L0, H0) ||
+      !matchMMIMulHJoin(N->getOperand(1), L1, H1))
+    return SDValue();
+  SDNode *M0 = L0.getNode(), *M1 = L1.getNode();
+  if (M0->getOpcode() != MipsISD::MMIMulH ||
+      M1->getOpcode() != MipsISD::MMIMulH || H0.getNode() != M0 ||
+      H1.getNode() != M1 || L0.getResNo() != 0 || H0.getResNo() != 1 ||
+      L1.getResNo() != 0 || H1.getResNo() != 1 || M0 == M1)
+    return SDValue();
+  // Every operand of the chain is live at once, so keep the chains short.
+  if (M0->getNumOperands() + M1->getNumOperands() > 8)
+    return SDValue();
+  // Only when nobody else needs the separate sums.
+  if (!N->getOperand(0).hasOneUse() || !N->getOperand(1).hasOneUse())
+    return SDValue();
+  SmallVector<SDValue, 8> Ops(M0->op_begin(), M0->op_end());
+  Ops.append(M1->op_begin(), M1->op_end());
+  SDLoc DL(N);
+  SDValue Mul = DAG.getNode(MipsISD::MMIMulH, DL,
+                            DAG.getVTList(MVT::v4i32, MVT::v4i32), Ops);
+  return buildMMIMulHJoin(Mul.getValue(0), Mul.getValue(1), DL, DAG);
 }
 
 static SDValue performMMIExtendCombine(SDNode *N, SelectionDAG &DAG,
@@ -1358,6 +1425,10 @@ MipsSETargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
     if (SDValue R = performMMIWideningMulCombine(N, DAG, DCI, Subtarget))
       return R;
     return performMULCombine(N, DAG, DCI, this, Subtarget);
+  case ISD::ADD:
+    if (SDValue R = performMMIMulHAddCombine(N, DAG, DCI, Subtarget))
+      return R;
+    break;
   case ISD::SHL:
     Val = performSHLCombine(N, DAG, DCI, Subtarget);
     break;

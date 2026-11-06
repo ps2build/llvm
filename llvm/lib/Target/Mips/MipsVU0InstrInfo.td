@@ -1163,8 +1163,10 @@ def SQ : InstSE<(outs), (ins GPR64Opnd:$rt, mem:$addr), "sq\t$rt, $addr",
 // Signed 8x(16x16->32) multiply (PMULTH). The products 0,1,4,5 come back in
 // the first result and 2,3,6,7 in the second, as the LO and HI registers hold
 // them.
-def SDT_MipsMMIMulH : SDTypeProfile<2, 2, [SDTCisVT<0, v4i32>, SDTCisVT<1, v4i32>,
-                                           SDTCisVT<2, v8i16>, SDTCisVT<3, v8i16>]>;
+// The operands are any number of v8i16 pairs; the products of all pairs are
+// summed (PMULTH, then PMADDH for each further pair).
+def SDT_MipsMMIMulH : SDTypeProfile<2, -1, [SDTCisVT<0, v4i32>,
+                                            SDTCisVT<1, v4i32>]>;
 def MipsMMIMulH : SDNode<"MipsISD::MMIMulH", SDT_MipsMMIMulH>;
 let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1 in {
 class MMI128_3R : PseudoSE<(outs GPR128:$rd), (ins GPR128:$rs, GPR128:$rt), []>;
@@ -1202,9 +1204,9 @@ def PSUBUB_128 : MMI128_3R;
 def PSUBUH_128 : MMI128_3R;
 def PSUBUW_128 : MMI128_3R;
 def PEXTLB_128 : MMI128_3R;
-let Defs = [HI0, LO0] in
+let Defs = [HI0, LO0], Constraints = "@earlyclobber $lo,@earlyclobber $hi" in
 def PMULTH_128 : PseudoSE<(outs GPR128:$lo, GPR128:$hi),
-                          (ins GPR128:$rs, GPR128:$rt), []>;
+                          (ins variable_ops), []>;
 def PEXTUB_128 : MMI128_3R;
 def PEXTLH_128 : MMI128_3R;
 def PEXTUH_128 : MMI128_3R;

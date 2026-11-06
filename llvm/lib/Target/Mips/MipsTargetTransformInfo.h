@@ -44,6 +44,8 @@ public:
   unsigned getMaxInterleaveFactor(ElementCount VF,
                                   bool HasUnorderedReductions) const override;
 
+  bool preferEpilogueVectorization(ElementCount Iters) const override;
+
   bool hasDivRemOp(Type *DataType, bool IsSigned) const override;
 
   unsigned adjustInliningThreshold(const CallBase *CB) const override;

@@ -20,9 +20,20 @@ TypeSize MipsTTIImpl::getRegisterBitWidth(TTI::RegisterKind K) const {
 
 unsigned MipsTTIImpl::getMaxInterleaveFactor(ElementCount VF,
                                             bool HasUnorderedReductions) const {
+  // The in-order core stalls on the ldl/ldr -> pcpyld and pmaxh dependency
+  // chains; two independent vectors per iteration hide that latency.
   if (ST->isR5900() && !ST->hasMSA())
-    return 1;
+    return VF.isVector() ? 2 : 1;
   return BaseT::getMaxInterleaveFactor(VF, HasUnorderedReductions);
+}
+
+// A vectorized remainder loop would run at most one narrower vector iteration
+// and pays for it with stack round-trips (no cheap element insert), so the
+// scalar remainder is better.
+bool MipsTTIImpl::preferEpilogueVectorization(ElementCount Iters) const {
+  if (ST->isR5900() && !ST->hasMSA())
+    return false;
+  return BaseT::preferEpilogueVectorization(Iters);
 }
 
 // A 16-byte aligned 128-bit vector is one lq/sq; an unaligned one is an

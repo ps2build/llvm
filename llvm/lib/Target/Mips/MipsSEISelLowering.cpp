@@ -374,7 +374,9 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
       setOperationAction({ISD::BITCAST, ISD::LOAD, ISD::STORE, ISD::UNDEF,
                           ISD::POISON, ISD::AND, ISD::OR, ISD::XOR},
                          VT, Legal);
-      setOperationAction(ISD::BUILD_VECTOR, VT, Custom);
+      setOperationAction({ISD::BUILD_VECTOR, ISD::EXTRACT_VECTOR_ELT,
+                          ISD::VECTOR_SHUFFLE},
+                         VT, Custom);
       setOperationAction({ISD::LOAD, ISD::STORE}, VT, Custom);
       if (VT != MVT::v2i64)
         setOperationAction({ISD::ADD, ISD::SUB, ISD::SADDSAT, ISD::SSUBSAT,
@@ -2812,6 +2814,90 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_VOID(SDValue Op,
   }
 }
 
+// R5900 128-bit integer vectors live in a GPR128; individual 64-bit halves are
+// reached with PCPYLD/PCPYUD (MMILo/MMIHi) and rebuilt with MMIPack.
+static SDValue getMMIHalf(SelectionDAG &DAG, const SDLoc &DL, SDValue Vec,
+                          unsigned Half) {
+  SDValue V = DAG.getNode(ISD::BITCAST, DL, MVT::v2i64, Vec);
+  return DAG.getNode(Half ? MipsISD::MMIHi : MipsISD::MMILo, DL, MVT::i64, V);
+}
+
+// Extract a constant-index element through the 64-bit half that holds it.
+static SDValue lowerR5900ExtractElt(SDValue Op, SelectionDAG &DAG) {
+  auto *Idx = dyn_cast<ConstantSDNode>(Op.getOperand(1));
+  if (!Idx)
+    return SDValue();
+  SDLoc DL(Op);
+  SDValue Vec = Op.getOperand(0);
+  unsigned EltBits = Vec.getValueType().getScalarSizeInBits();
+  unsigned Bit = Idx->getZExtValue() * EltBits;
+  SDValue Half = getMMIHalf(DAG, DL, Vec, Bit / 64);
+  if (Bit % 64)
+    Half = DAG.getNode(ISD::SRL, DL, MVT::i64, Half,
+                       DAG.getConstant(Bit % 64, DL, MVT::i64));
+  return DAG.getAnyExtOrTrunc(Half, DL, Op.getValueType());
+}
+
+// A single-input shuffle that moves every defined element down by a constant
+// number of lanes, staying inside one 64-bit half (or taking the upper half
+// into the lower one), needs only a shift or PCPYUD.
+static SDValue lowerR5900Shuffle(SDValue Op, SelectionDAG &DAG) {
+  auto *SVN = cast<ShuffleVectorSDNode>(Op);
+  EVT VT = Op.getValueType();
+  if (!Op.getOperand(1).isUndef())
+    return SDValue();
+  unsigned NumElts = VT.getVectorNumElements();
+  unsigned EltBits = VT.getScalarSizeInBits();
+  unsigned PerHalf = 64 / EltBits;
+  int K = -1;
+  unsigned LastDef = 0;
+  for (unsigned I = 0; I != NumElts; ++I) {
+    int M = SVN->getMaskElt(I);
+    if (M < 0)
+      continue;
+    if (M < int(I) || M >= int(NumElts) || (K >= 0 && M - int(I) != K))
+      return SDValue();
+    K = M - int(I);
+    LastDef = I;
+  }
+  if (K <= 0)
+    return SDValue();
+  SDLoc DL(Op);
+  SDValue Src = Op.getOperand(0);
+  SDValue Lo;
+  if (unsigned(K) == PerHalf && LastDef < PerHalf) {
+    Lo = getMMIHalf(DAG, DL, Src, 1);
+  } else if (unsigned(K) < PerHalf && LastDef + K < PerHalf) {
+    Lo = DAG.getNode(ISD::SRL, DL, MVT::i64, getMMIHalf(DAG, DL, Src, 0),
+                     DAG.getConstant(K * EltBits, DL, MVT::i64));
+  } else {
+    return SDValue();
+  }
+  SDValue Pack = DAG.getNode(MipsISD::MMIPack, DL, MVT::v2i64,
+                             DAG.getUNDEF(MVT::i64), Lo);
+  return DAG.getNode(ISD::BITCAST, DL, VT, Pack);
+}
+
+// Replicate a scalar across a vector: double the zero-extended element up to
+// 64 bits with shift/or, then pack the two halves.
+static SDValue lowerR5900Splat(SDValue Op, SelectionDAG &DAG) {
+  EVT VT = Op.getValueType();
+  unsigned EltBits = VT.getScalarSizeInBits();
+  SDValue Splat = cast<BuildVectorSDNode>(Op)->getSplatValue();
+  if (!Splat || EltBits >= 64)
+    return SDValue();
+  SDLoc DL(Op);
+  SDValue Rep = DAG.getZeroExtendInReg(
+      DAG.getAnyExtOrTrunc(Splat, DL, MVT::i64), DL,
+      EVT::getIntegerVT(*DAG.getContext(), EltBits));
+  for (unsigned Sh = EltBits; Sh < 64; Sh *= 2)
+    Rep = DAG.getNode(ISD::OR, DL, MVT::i64, Rep,
+                      DAG.getNode(ISD::SHL, DL, MVT::i64, Rep,
+                                  DAG.getConstant(Sh, DL, MVT::i64)));
+  SDValue Pack = DAG.getNode(MipsISD::MMIPack, DL, MVT::v2i64, Rep, Rep);
+  return DAG.getNode(ISD::BITCAST, DL, VT, Pack);
+}
+
 // Lower ISD::EXTRACT_VECTOR_ELT into MipsISD::VEXTRACT_SEXT_ELT.
 //
 // The non-value bits resulting from ISD::EXTRACT_VECTOR_ELT are undefined. We
@@ -2825,6 +2911,9 @@ lowerEXTRACT_VECTOR_ELT(SDValue Op, SelectionDAG &DAG) const {
   EVT ResTy = Op->getValueType(0);
   SDValue Op0 = Op->getOperand(0);
   EVT VecTy = Op0->getValueType(0);
+
+  if (Subtarget.isR5900() && !Subtarget.hasMSA())
+    return lowerR5900ExtractElt(Op, DAG);
 
   if (!VecTy.is128BitVector())
     return SDValue();
@@ -2875,7 +2964,7 @@ SDValue MipsSETargetLowering::lowerBUILD_VECTOR(SDValue Op,
     if (ISD::isBuildVectorAllOnes(Op.getNode()) ||
         ISD::isBuildVectorAllZeros(Op.getNode()))
       return Op;
-    return SDValue();
+    return lowerR5900Splat(Op, DAG);
   }
 
   BuildVectorSDNode *Node = cast<BuildVectorSDNode>(Op);
@@ -3428,6 +3517,9 @@ SDValue MipsSETargetLowering::lowerVECTOR_SHUFFLE(SDValue Op,
                                                   SelectionDAG &DAG) const {
   ShuffleVectorSDNode *Node = cast<ShuffleVectorSDNode>(Op);
   EVT ResTy = Op->getValueType(0);
+
+  if (Subtarget.isR5900() && !Subtarget.hasMSA())
+    return lowerR5900Shuffle(Op, DAG);
 
   if (!ResTy.is128BitVector())
     return SDValue();

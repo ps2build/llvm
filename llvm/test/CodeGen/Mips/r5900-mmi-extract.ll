@@ -1,7 +1,9 @@
 ; RUN: llc -mtriple=mips64el -mcpu=r5900 < %s | FileCheck %s
 
 ; CHECK-LABEL: extract_w2:
-; CHECK:       lw $2, {{[0-9]+}}($sp)
+; CHECK:       pcpyud
+; CHECK-NOT:   lw
+; CHECK:       sll $2, $1, 0
 define i32 @extract_w2(<4 x i32> %a) {
   %r = extractelement <4 x i32> %a, i32 2
   ret i32 %r

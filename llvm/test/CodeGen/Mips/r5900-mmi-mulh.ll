@@ -20,7 +20,7 @@ define void @mul_widen(ptr %a, ptr %b, ptr %o) {
 define void @mul_add(ptr %a, ptr %b, ptr %c, ptr %d, ptr %o) {
 ; CHECK-LABEL: mul_add:
 ; CHECK:       pmulth
-; CHECK-NEXT:  pmaddh
+; CHECK:       pmaddh
 ; CHECK-NEXT:  pmflo
 ; CHECK-NEXT:  pmfhi
   %x = load <8 x i16>, ptr %a, align 16

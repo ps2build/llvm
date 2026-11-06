@@ -72,6 +72,7 @@ extern "C" LLVM_ABI LLVM_EXTERNAL_VISIBILITY void LLVMInitializeMipsTarget() {
   initializeMipsSplitHi16Pass(*PR);
   initializeMipsSinkHi16Pass(*PR);
   initializeMipsR5900FPUAccPass(*PR);
+  initializeMipsR5900LoopAccPass(*PR);
   initializeMipsMulMulBugFixPass(*PR);
   initializeMipsDAGToDAGISelLegacyPass(*PR);
   initializeMipsSetMachineRegisterFlagsPass(*PR);
@@ -268,8 +269,10 @@ void MipsPassConfig::addMachineLateOptimization() {
 void MipsPassConfig::addPreRegAlloc() {
   addPass(createMipsOptimizePICCallPass());
   addPass(createMipsSplitHi16Pass());
-  if (getMipsSubtarget().isR5900() && getOptLevel() != CodeGenOptLevel::None)
+  if (getMipsSubtarget().isR5900() && getOptLevel() != CodeGenOptLevel::None) {
+    addPass(createMipsR5900LoopAccPass());
     addPass(createMipsR5900FPUAccPass());
+  }
   addPass(createMipsSetMachineRegisterFlagsPass());
 }
 

@@ -53,6 +53,7 @@ FunctionPass *createMipsPostLegalizeCombiner(bool IsOptNone);
 FunctionPass *createMipsMulMulBugPass();
 FunctionPass *createMipsSplitHi16Pass();
 FunctionPass *createMipsSinkHi16Pass();
+FunctionPass *createMipsR5900FPUAccPass();
 FunctionPass *createMipsSetMachineRegisterFlagsPass();
 
 InstructionSelector *
@@ -65,6 +66,7 @@ void initializeMipsBranchExpansionPass(PassRegistry &);
 void initializeMipsDAGToDAGISelLegacyPass(PassRegistry &);
 void initializeMipsDelaySlotFillerPass(PassRegistry &);
 void initializeMipsMulMulBugFixPass(PassRegistry &);
+void initializeMipsR5900FPUAccPass(PassRegistry &);
 void initializeMipsPostLegalizerCombinerPass(PassRegistry &);
 void initializeMipsPreLegalizerCombinerPass(PassRegistry &);
 void initializeMipsSetMachineRegisterFlagsPass(PassRegistry &);

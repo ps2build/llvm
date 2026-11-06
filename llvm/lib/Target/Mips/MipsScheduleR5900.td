@@ -88,7 +88,8 @@ def : InstRW<[R5900WriteFPLS], (instregex "^(LWC1|SWC1)$")>;
 
 def : InstRW<[R5900WriteFP], (instregex
   "^(FADD_S|FSUB_S|FMUL_S|FABS_S|FNEG_S|FMOV_S|CVT_S_W|CVT_W_S|"
-  "TRUNC_W_S|MAX_S_R5900|MIN_S_R5900)$")>;
+  "TRUNC_W_S|MAX_S_R5900|MIN_S_R5900|ADDA_S_R5900|SUBA_S_R5900|"
+  "MULA_S_R5900|MADDA_S_R5900|MSUBA_S_R5900|MADD_S_R5900|MSUB_S_R5900)$")>;
 def : InstRW<[R5900WriteFPDiv], (instregex "^(FDIV_S|FSQRT_S|FSQRT_S_R5900)$")>;
 def : InstRW<[R5900WriteFPRsqrt], (instregex "^RSQRT_S_R5900$")>;
 def : InstRW<[R5900WriteFPCmp], (instregex "^FCMP_S32$")>;

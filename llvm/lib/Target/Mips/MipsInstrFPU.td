@@ -1067,7 +1067,7 @@ class R5900_FPU_ACC2<string opstr> :
   InstSE<(outs), (ins FGR32Opnd:$fs, FGR32Opnd:$ft),
          !strconcat(opstr, "	$fs, $ft"), [], FrmFR, opstr>,
   HARDFLOAT {
-  let hasSideEffects = 1;
+  let hasSideEffects = 0;
 }
 
 class R5900_ACC_FM<bits<6> funct> : StdArch {
@@ -1097,12 +1097,16 @@ let Predicates = [IsR5900], hasNoSchedulingInfo = 1, mayRaiseFPException = 1, Us
                                 (fsqrt_one_use FGR32Opnd:$ft)))],
                              FrmFR, "rsqrt.s">,
                       HARDFLOAT, ADDS_FM<0x16, 16>;
-  def ADDA_S_R5900 : R5900_FPU_ACC2<"adda.s">, R5900_ACC_FM<0x18>;
-  def SUBA_S_R5900 : R5900_FPU_ACC2<"suba.s">, R5900_ACC_FM<0x19>;
-  def MULA_S_R5900 : R5900_FPU_ACC2<"mula.s">, R5900_ACC_FM<0x1a>;
-  def MADDA_S_R5900 : R5900_FPU_ACC2<"madda.s">, R5900_ACC_FM<0x1e>;
-  def MSUBA_S_R5900 : R5900_FPU_ACC2<"msuba.s">, R5900_ACC_FM<0x1f>;
-  let hasSideEffects = 1 in {
+  let Defs = [FPU_ACC] in {
+    def ADDA_S_R5900 : R5900_FPU_ACC2<"adda.s">, R5900_ACC_FM<0x18>;
+    def SUBA_S_R5900 : R5900_FPU_ACC2<"suba.s">, R5900_ACC_FM<0x19>;
+    def MULA_S_R5900 : R5900_FPU_ACC2<"mula.s">, R5900_ACC_FM<0x1a>;
+  }
+  let Defs = [FPU_ACC], Uses = [FCR31, FPU_ACC] in {
+    def MADDA_S_R5900 : R5900_FPU_ACC2<"madda.s">, R5900_ACC_FM<0x1e>;
+    def MSUBA_S_R5900 : R5900_FPU_ACC2<"msuba.s">, R5900_ACC_FM<0x1f>;
+  }
+  let hasSideEffects = 0, Uses = [FCR31, FPU_ACC] in {
     def MADD_S_R5900 : InstSE<(outs FGR32Opnd:$fd),
                               (ins FGR32Opnd:$fs, FGR32Opnd:$ft),
                               "madd.s	$fd, $fs, $ft", [], FrmFR, "madd.s">,

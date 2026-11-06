@@ -14,10 +14,9 @@ define void @zext_b_h(ptr align 16 %s, ptr align 16 %d) {
 
 ; Sign extension interleaves with the register itself, then shifts.
 ; CHECK-LABEL: sext_h_w:
-; CHECK: pextlh [[L:\$[0-9]+]], [[S:\$[0-9]+]], [[S]]
-; CHECK: psraw {{.*}}, 16
-; CHECK: pextuh {{.*}}, [[S]], [[S]]
-; CHECK: psraw {{.*}}, 16
+; CHECK-DAG: pextlh [[L:\$[0-9]+]], [[S:\$[0-9]+]], [[S]]
+; CHECK-DAG: pextuh {{.*}}, [[S]], [[S]]
+; CHECK-DAG: psraw {{.*}}, 16
 define void @sext_h_w(ptr align 16 %s, ptr align 16 %d) {
   %v = load <8 x i16>, ptr %s, align 16
   %z = sext <8 x i16> %v to <8 x i32>

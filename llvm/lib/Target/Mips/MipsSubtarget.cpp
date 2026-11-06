@@ -236,6 +236,17 @@ bool MipsSubtarget::isPositionIndependent() const {
 /// This overrides the PostRAScheduler bit in the SchedModel for any CPU.
 bool MipsSubtarget::enablePostRAScheduler() const { return true; }
 
+// The R5900 issues in order, so schedule from the top: the loads that feed a
+// chain of dependent FPU operations are hoisted ahead of it instead of being
+// kept next to their users.
+void MipsSubtarget::overrideSchedPolicy(MachineSchedPolicy &Policy,
+                                        const SchedRegion &Region) const {
+  if (IsR5900) {
+    Policy.OnlyBottomUp = false;
+    Policy.OnlyTopDown = true;
+  }
+}
+
 void MipsSubtarget::getCriticalPathRCs(RegClassVector &CriticalPathRCs) const {
   CriticalPathRCs.clear();
   CriticalPathRCs.push_back(isGP64bit() ? &Mips::GPR64RegClass

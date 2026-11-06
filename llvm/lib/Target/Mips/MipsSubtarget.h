@@ -280,6 +280,8 @@ public:
   bool enableMachineScheduler() const override {
     return IsR5900 || IsR3000A;
   }
+  void overrideSchedPolicy(MachineSchedPolicy &Policy,
+                           const SchedRegion &Region) const override;
   void getCriticalPathRCs(RegClassVector &CriticalPathRCs) const override;
   CodeGenOptLevel getOptLevelToEnablePostRAScheduler() const override;
   bool useAA() const override;

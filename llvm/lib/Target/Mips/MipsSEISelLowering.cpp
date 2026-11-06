@@ -377,7 +377,9 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
       setOperationAction(ISD::BUILD_VECTOR, VT, Custom);
       setOperationAction({ISD::LOAD, ISD::STORE}, VT, Custom);
       if (VT != MVT::v2i64)
-        setOperationAction({ISD::ADD, ISD::SUB}, VT, Legal);
+        setOperationAction({ISD::ADD, ISD::SUB, ISD::SADDSAT, ISD::SSUBSAT,
+                            ISD::UADDSAT, ISD::USUBSAT},
+                           VT, Legal);
       if (VT != MVT::v2i64 && VT != MVT::v16i8) {
         setOperationAction({ISD::SMAX, ISD::SMIN}, VT, Legal);
         setOperationAction({ISD::SHL, ISD::SRA, ISD::SRL}, VT, Custom);

@@ -1183,6 +1183,18 @@ def PMAXH_128 : MMI128_3R;
 def PMAXW_128 : MMI128_3R;
 def PMINH_128 : MMI128_3R;
 def PMINW_128 : MMI128_3R;
+def PADDSB_128 : MMI128_3R;
+def PADDSH_128 : MMI128_3R;
+def PADDSW_128 : MMI128_3R;
+def PSUBSB_128 : MMI128_3R;
+def PSUBSH_128 : MMI128_3R;
+def PSUBSW_128 : MMI128_3R;
+def PADDUB_128 : MMI128_3R;
+def PADDUH_128 : MMI128_3R;
+def PADDUW_128 : MMI128_3R;
+def PSUBUB_128 : MMI128_3R;
+def PSUBUH_128 : MMI128_3R;
+def PSUBUW_128 : MMI128_3R;
 def PEXTLB_128 : MMI128_3R;
 def PEXTUB_128 : MMI128_3R;
 def PEXTLH_128 : MMI128_3R;
@@ -1286,6 +1298,18 @@ foreach VT = [v16i8, v8i16, v4i32] in
                 (COPY_TO_REGCLASS (PNOR_128 (COPY_TO_REGCLASS VT:$rs, GPR128),
                                             (COPY_TO_REGCLASS VT:$rs, GPR128)),
                                   GPR128)>;
+def : MMI128Bin<saddsat, v16i8, PADDSB_128>;
+def : MMI128Bin<saddsat, v8i16, PADDSH_128>;
+def : MMI128Bin<saddsat, v4i32, PADDSW_128>;
+def : MMI128Bin<ssubsat, v16i8, PSUBSB_128>;
+def : MMI128Bin<ssubsat, v8i16, PSUBSH_128>;
+def : MMI128Bin<ssubsat, v4i32, PSUBSW_128>;
+def : MMI128Bin<uaddsat, v16i8, PADDUB_128>;
+def : MMI128Bin<uaddsat, v8i16, PADDUH_128>;
+def : MMI128Bin<uaddsat, v4i32, PADDUW_128>;
+def : MMI128Bin<usubsat, v16i8, PSUBUB_128>;
+def : MMI128Bin<usubsat, v8i16, PSUBUH_128>;
+def : MMI128Bin<usubsat, v4i32, PSUBUW_128>;
 def : MMI128Bin<smax, v8i16, PMAXH_128>;
 def : MMI128Bin<smax, v4i32, PMAXW_128>;
 def : MMI128Bin<smin, v8i16, PMINH_128>;

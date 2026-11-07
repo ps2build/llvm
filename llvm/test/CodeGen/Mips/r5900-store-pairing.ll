@@ -1,9 +1,9 @@
 ; RUN: llc -mtriple=mips64el-unknown-elf -mcpu=r5900 -target-abi=n32 -O2 < %s | FileCheck %s
 
 ; The R5900 pairs a store only with a non-store, so the four stores of one
-; iteration are best spread among the ALU work. The R5900 schedules from the top
-; before register allocation, which does not spread them yet (TODO), so this only
-; checks that the loop keeps its four stores.
+; iteration are best spread among the ALU work. Loops without accumulator chains
+; keep the default pre-RA scheduler; this checks that the loop keeps its four
+; stores.
 
 define void @packet(ptr %out, i32 %n) {
 ; CHECK-LABEL: packet:
@@ -11,7 +11,7 @@ define void @packet(ptr %out, i32 %n) {
 ; CHECK-DAG:    sd $6, 8($2)
 ; CHECK-DAG:    sd $zero, 24($2)
 ; CHECK-DAG:    sd $1, 0($2)
-; CHECK-DAG:    sd $1, 16($2)
+; CHECK-DAG:    sd ${{[0-9]+}}, 16($2)
 entry:
   %cmp = icmp eq i32 %n, 0
   br i1 %cmp, label %exit, label %loop

@@ -241,7 +241,23 @@ bool MipsSubtarget::enablePostRAScheduler() const { return true; }
 // kept next to their users.
 void MipsSubtarget::overrideSchedPolicy(MachineSchedPolicy &Policy,
                                         const SchedRegion &Region) const {
-  if (IsR5900) {
+  if (!IsR5900)
+    return;
+  // Only regions that feed an accumulator chain gain from top-down; streaming
+  // loops keep the default so loads stay next to their users.
+  bool HasAcc = false;
+  for (auto I = Region.RegionBegin; I != Region.RegionEnd; ++I) {
+    // ldl/ldr pairs also want their loads hoisted ahead of the merge.
+    if (I->getOpcode() == Mips::LDL || I->getOpcode() == Mips::LDR)
+      HasAcc = true;
+    for (const MachineOperand &MO : I->operands())
+      if (MO.isReg() && MO.getReg().isPhysical() &&
+          (MO.getReg() == Mips::FPU_ACC || MO.getReg() == Mips::HI0 ||
+           MO.getReg() == Mips::LO0 || MO.getReg() == Mips::HI0_64 ||
+           MO.getReg() == Mips::LO0_64 || MO.getReg() == Mips::AC0_64))
+        HasAcc = true;
+  }
+  if (HasAcc) {
     Policy.OnlyBottomUp = false;
     Policy.OnlyTopDown = true;
   }

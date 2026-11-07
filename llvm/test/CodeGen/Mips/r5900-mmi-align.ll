@@ -8,7 +8,7 @@ target datalayout = "e-m:m-p:32:32-i8:8:32-i16:16:32-i64:64-n32:64-S64"
 ; IR-LABEL: @add(
 ; IR: mmi.align.check:
 ; IR: and i32 %{{.*}}, 15
-; IR: br i1 %{{.*}}, label %scalar.ph, label %vector.ph
+; IR: br i1 %{{.*}}, label %{{(scalar.ph|vec.epilog.ph)}}, label %vector.ph
 ; IR: load <4 x i32>, ptr %{{.*}}, align 16
 ; IR: store <4 x i32> %{{.*}}, ptr %{{.*}}, align 16
 ; OFF-LABEL: @add(
@@ -44,8 +44,7 @@ exit:
 ; IR: mmi.align.check:
 ; IR: getelementptr
 ; IR: ptrtoint
-; IR: scalar.ph:
-; IR: %bc.merge.rdx = phi i32 [ %{{.*}}, %middle.block ], [ 0, %{{.*}} ], [ 0, %mmi.align.check ]
+; IR: %bc.merge.rdx = phi i32 [ %{{.*}}, %vec.epilog.iter.check ], [ 0, %{{.*}} ], [ 0, %mmi.align.check ]
 define i32 @sum_off(ptr noalias %a, i32 %k, i32 %n) {
 entry:
   %c = icmp sgt i32 %n, 0
@@ -91,7 +90,7 @@ exit:
 ; IR-LABEL: @stencil(
 ; IR: mmi.align.check:
 ; IR: and i32 %{{.*}}, 15
-; IR: br i1 %{{.*}}, label %scalar.ph, label %vector.ph
+; IR: br i1 %{{.*}}, label %{{(scalar.ph|vec.epilog.ph)}}, label %vector.ph
 ; IR: load <4 x i32>, ptr %{{.*}}, align 16
 ; IR: load <4 x i32>, ptr %{{.*}}, align 4
 define void @stencil(ptr noalias %d, ptr noalias %a, i32 %n) {

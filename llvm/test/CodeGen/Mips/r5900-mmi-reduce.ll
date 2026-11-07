@@ -44,10 +44,9 @@ define i16 @extract_hi(<8 x i16> %x) {
   ret i16 %r
 }
 
-; The vectorized remainder loop is not worth its stack traffic: expect no
-; vec.epilog blocks.
+; The remainder of the interleaved i16 loop is vectorized 8-wide.
 ; IR-LABEL: @hmax(
-; IR-NOT:   vec.epilog
+; IR:       vec.epilog.vector.body
 define i16 @hmax(ptr %a, i32 %n) {
 entry:
   %a0 = load i16, ptr %a

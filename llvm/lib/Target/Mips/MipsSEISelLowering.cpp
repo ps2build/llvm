@@ -203,7 +203,7 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
     setOperationAction(ISD::MUL,              MVT::i64, Legal);
   else if (Subtarget.isR5900()) {
     // R5900 doesn't have DMULT/DMULTU/DDIV/DDIVU - expand to 32-bit ops
-    setOperationAction(ISD::MUL, MVT::i64, Expand);
+    setOperationAction(ISD::MUL, MVT::i64, Custom);
     setOperationAction(ISD::SMUL_LOHI, MVT::i64, Expand);
     setOperationAction(ISD::UMUL_LOHI, MVT::i64, Expand);
     setOperationAction(ISD::MULHS, MVT::i64, Expand);
@@ -237,6 +237,9 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
   }
 
   setTargetDAGCombine(ISD::MUL);
+  if (Subtarget.isR5900())
+    setTargetDAGCombine({ISD::SIGN_EXTEND, ISD::ZERO_EXTEND, ISD::ANY_EXTEND,
+                         ISD::TRUNCATE});
 
   setOperationAction(ISD::INTRINSIC_WO_CHAIN, MVT::Other, Custom);
   setOperationAction(ISD::INTRINSIC_W_CHAIN, MVT::Other, Custom);
@@ -371,10 +374,14 @@ MipsSETargetLowering::MipsSETargetLowering(const MipsTargetMachine &TM,
       setOperationAction({ISD::BITCAST, ISD::LOAD, ISD::STORE, ISD::UNDEF,
                           ISD::POISON, ISD::AND, ISD::OR, ISD::XOR},
                          VT, Legal);
-      setOperationAction(ISD::BUILD_VECTOR, VT, Custom);
+      setOperationAction({ISD::BUILD_VECTOR, ISD::EXTRACT_VECTOR_ELT,
+                          ISD::VECTOR_SHUFFLE},
+                         VT, Custom);
       setOperationAction({ISD::LOAD, ISD::STORE}, VT, Custom);
       if (VT != MVT::v2i64)
-        setOperationAction({ISD::ADD, ISD::SUB}, VT, Legal);
+        setOperationAction({ISD::ADD, ISD::SUB, ISD::SADDSAT, ISD::SSUBSAT,
+                            ISD::UADDSAT, ISD::USUBSAT},
+                           VT, Legal);
       if (VT != MVT::v2i64 && VT != MVT::v16i8) {
         setOperationAction({ISD::SMAX, ISD::SMIN}, VT, Legal);
         setOperationAction({ISD::SHL, ISD::SRA, ISD::SRL}, VT, Custom);
@@ -621,7 +628,10 @@ SDValue MipsSETargetLowering::LowerOperation(SDValue Op,
   case ISD::UMUL_LOHI: return lowerMulDiv(Op, MipsISD::Multu, true, true, DAG);
   case ISD::MULHS:     return lowerMulDiv(Op, MipsISD::Mult, false, true, DAG);
   case ISD::MULHU:     return lowerMulDiv(Op, MipsISD::Multu, false, true, DAG);
-  case ISD::MUL:       return lowerMulDiv(Op, MipsISD::Mult, true, false, DAG);
+  case ISD::MUL:
+    if (Subtarget.isR5900() && Op.getValueType() == MVT::i64)
+      return lowerR5900WideningMul(Op, DAG);
+    return lowerMulDiv(Op, MipsISD::Mult, true, false, DAG);
   case ISD::SDIVREM:   return lowerMulDiv(Op, MipsISD::DivRem, true, true, DAG);
   case ISD::UDIVREM:   return lowerMulDiv(Op, MipsISD::DivRemU, true, true,
                                           DAG);
@@ -1216,6 +1226,191 @@ static SDValue performFP_TO_UINTCombine(SDNode *N, SelectionDAG &DAG) {
   return DAG.getNode(ISD::FP_TO_SINT, SDLoc(N), VT, Src);
 }
 
+/// R5900: extend a v8i16 or v16i8 to elements two or four times as wide by
+/// interleaving it with zero (zero or any extension) or with itself followed
+/// by an arithmetic shift (sign extension), one half of the source per step.
+static void extendMMI(SDValue Src, bool Signed, const SDLoc &DL,
+                      SelectionDAG &DAG, SmallVectorImpl<SDValue> &Out) {
+  EVT VT = Src.getValueType();
+  EVT WideVT = VT == MVT::v8i16 ? MVT::v4i32 : MVT::v8i16;
+  SDValue Other = Signed ? Src : DAG.getConstant(0, DL, VT);
+  for (unsigned Opc : {MipsISD::MMIExtLo, MipsISD::MMIExtHi}) {
+    SDValue V = DAG.getBitcast(WideVT, DAG.getNode(Opc, DL, VT, Other, Src));
+    if (Signed)
+      V = DAG.getNode(ISD::SRA, DL, WideVT, V,
+                      DAG.getConstant(VT.getScalarSizeInBits(), DL, WideVT));
+    Out.push_back(V);
+  }
+}
+
+// True for sext(v8i16) feeding a v8i32 multiply of two such values, which
+// PMULTH does on the 16-bit operands directly.
+static bool isMMIWideningMulOperand(SDValue V) {
+  if (V.getOpcode() != ISD::SIGN_EXTEND ||
+      V.getValueType() != MVT::v8i32 ||
+      V.getOperand(0).getValueType() != MVT::v8i16)
+    return false;
+  return true;
+}
+
+// Put the products of PMULTH (LO and HI) back in element order.
+static SDValue buildMMIMulHJoin(SDValue Lo, SDValue Hi, const SDLoc &DL,
+                                SelectionDAG &DAG) {
+  // Products 0,1 | 2,3 and 4,5 | 6,7 are the low and high halves of LO and HI.
+  auto Half = [&](SDValue V, unsigned Part) {
+    SDValue W = DAG.getNode(ISD::BITCAST, DL, MVT::v2i64, V);
+    return DAG.getNode(Part ? MipsISD::MMIHi : MipsISD::MMILo, DL, MVT::i64, W);
+  };
+  auto Join = [&](SDValue H, SDValue L) {
+    return DAG.getNode(ISD::BITCAST, DL, MVT::v4i32,
+                       DAG.getNode(MipsISD::MMIPack, DL, MVT::v2i64, H, L));
+  };
+  SDValue First = Join(Half(Hi, 0), Half(Lo, 0));
+  SDValue Second = Join(Half(Hi, 1), Half(Lo, 1));
+  return DAG.getNode(ISD::CONCAT_VECTORS, DL, MVT::v8i32, First, Second);
+}
+
+static SDValue performMMIWideningMulCombine(SDNode *N, SelectionDAG &DAG,
+                                            TargetLowering::DAGCombinerInfo &DCI,
+                                            const MipsSubtarget &Subtarget) {
+  if (!DCI.isBeforeLegalize() || !Subtarget.isR5900() || Subtarget.hasMSA() ||
+      N->getValueType(0) != MVT::v8i32 ||
+      !isMMIWideningMulOperand(N->getOperand(0)) ||
+      !isMMIWideningMulOperand(N->getOperand(1)))
+    return SDValue();
+  SDLoc DL(N);
+  SDVTList VTs = DAG.getVTList(MVT::v4i32, MVT::v4i32);
+  SDValue Mul = DAG.getNode(MipsISD::MMIMulH, DL, VTs,
+                            N->getOperand(0).getOperand(0),
+                            N->getOperand(1).getOperand(0));
+  return buildMMIMulHJoin(Mul.getValue(0), Mul.getValue(1), DL, DAG);
+}
+
+// Sums of widening multiplies stay in PMULTH's LO/HI lane order and are only
+// put in element order once. This matches a join made by buildMMIMulHJoin.
+static bool matchMMIMulHJoin(SDValue V, SDValue &Lo, SDValue &Hi) {
+  if (V.getOpcode() != ISD::CONCAT_VECTORS || V.getNumOperands() != 2)
+    return false;
+  SDValue L, H;
+  for (unsigned Part = 0; Part != 2; ++Part) {
+    SDValue B = V.getOperand(Part);
+    if (B.getOpcode() != ISD::BITCAST ||
+        B.getOperand(0).getOpcode() != MipsISD::MMIPack)
+      return false;
+    SDValue P = B.getOperand(0);
+    unsigned Want = Part ? MipsISD::MMIHi : MipsISD::MMILo;
+    SDValue A = P.getOperand(0), C = P.getOperand(1); // Hi-half, Lo-half
+    if (A.getOpcode() != Want || C.getOpcode() != Want ||
+        A.getOperand(0).getOpcode() != ISD::BITCAST ||
+        C.getOperand(0).getOpcode() != ISD::BITCAST)
+      return false;
+    SDValue AH = A.getOperand(0).getOperand(0);
+    SDValue CL = C.getOperand(0).getOperand(0);
+    if (Part == 0) {
+      H = AH;
+      L = CL;
+    } else if (H != AH || L != CL) {
+      return false;
+    }
+  }
+  Lo = L;
+  Hi = H;
+  return true;
+}
+
+static SDValue performMMIMulHAddCombine(SDNode *N, SelectionDAG &DAG,
+                                        TargetLowering::DAGCombinerInfo &DCI,
+                                        const MipsSubtarget &Subtarget) {
+  if (!DCI.isBeforeLegalize() || !Subtarget.isR5900() || Subtarget.hasMSA() ||
+      N->getValueType(0) != MVT::v8i32)
+    return SDValue();
+  SDValue L0, H0, L1, H1;
+  if (!matchMMIMulHJoin(N->getOperand(0), L0, H0) ||
+      !matchMMIMulHJoin(N->getOperand(1), L1, H1))
+    return SDValue();
+  if (!N->getOperand(0).hasOneUse() || !N->getOperand(1).hasOneUse())
+    return SDValue();
+  SDLoc DL(N);
+  SDNode *M0 = L0.getNode(), *M1 = L1.getNode();
+  bool Fusable = M0 != M1 && M0->getOpcode() == MipsISD::MMIMulH &&
+                 M1->getOpcode() == MipsISD::MMIMulH && H0.getNode() == M0 &&
+                 H1.getNode() == M1 && L0.getResNo() == 0 &&
+                 H0.getResNo() == 1 && L1.getResNo() == 0 &&
+                 H1.getResNo() == 1;
+  if (!Fusable) {
+    // The lanes are permuted alike, so add them as they are.
+    SDValue Lo = DAG.getNode(ISD::ADD, DL, MVT::v4i32, L0, L1);
+    SDValue Hi = DAG.getNode(ISD::ADD, DL, MVT::v4i32, H0, H1);
+    return buildMMIMulHJoin(Lo, Hi, DL, DAG);
+  }
+  SmallVector<SDValue, 16> Ops(M0->op_begin(), M0->op_end());
+  Ops.append(M1->op_begin(), M1->op_end());
+  SDValue Mul = DAG.getNode(MipsISD::MMIMulH, DL,
+                            DAG.getVTList(MVT::v4i32, MVT::v4i32), Ops);
+  return buildMMIMulHJoin(Mul.getValue(0), Mul.getValue(1), DL, DAG);
+}
+
+static SDValue performMMIExtendCombine(SDNode *N, SelectionDAG &DAG,
+                                       TargetLowering::DAGCombinerInfo &DCI,
+                                       const MipsSubtarget &Subtarget) {
+  SDValue Src = N->getOperand(0);
+  EVT VT = N->getValueType(0);
+  EVT SrcVT = Src.getValueType();
+  // Leave the extends of a widening multiply for the multiply combine.
+  if (N->getOpcode() == ISD::SIGN_EXTEND && VT == MVT::v8i32 && N->hasOneUse()) {
+    SDNode *User = *N->user_begin();
+    if (User->getOpcode() == ISD::MUL && User->getValueType(0) == MVT::v8i32 &&
+        isMMIWideningMulOperand(User->getOperand(0)) &&
+        isMMIWideningMulOperand(User->getOperand(1)))
+      return SDValue();
+  }
+  if (!DCI.isBeforeLegalize() || !Subtarget.isR5900() || Subtarget.hasMSA() ||
+      (SrcVT != MVT::v8i16 && SrcVT != MVT::v16i8) || !VT.isSimple() ||
+      VT.getScalarSizeInBits() > 32)
+    return SDValue();
+  SDLoc DL(N);
+  bool Signed = N->getOpcode() == ISD::SIGN_EXTEND;
+  SmallVector<SDValue, 4> Parts;
+  extendMMI(Src, Signed, DL, DAG, Parts);
+  if (Parts[0].getScalarValueSizeInBits() != VT.getScalarSizeInBits()) {
+    // Bytes to words: extend each half again.
+    SmallVector<SDValue, 4> Words;
+    for (SDValue Half : Parts)
+      extendMMI(Half, Signed, DL, DAG, Words);
+    Parts = Words;
+  }
+  return DAG.getNode(ISD::CONCAT_VECTORS, DL, VT, Parts);
+}
+
+/// Pack the even elements of the two halves of \p Src into \p VT, in steps
+/// when the source elements are more than twice as wide.
+static SDValue truncateMMI(SDValue Src, EVT VT, const SDLoc &DL,
+                           SelectionDAG &DAG) {
+  unsigned Bits = VT.getScalarSizeInBits();
+  auto [Lo, Hi] = DAG.SplitVector(Src, DL);
+  if (Src.getScalarValueSizeInBits() > 2 * Bits) {
+    EVT MidVT = EVT::getVectorVT(*DAG.getContext(),
+                                 MVT::getIntegerVT(2 * Bits),
+                                 VT.getVectorNumElements() / 2);
+    Lo = truncateMMI(Lo, MidVT, DL, DAG);
+    Hi = truncateMMI(Hi, MidVT, DL, DAG);
+  }
+  return DAG.getNode(MipsISD::MMIPackEven, DL, VT, Hi, Lo);
+}
+
+static SDValue performMMITruncateCombine(SDNode *N, SelectionDAG &DAG,
+                                         TargetLowering::DAGCombinerInfo &DCI,
+                                         const MipsSubtarget &Subtarget) {
+  EVT VT = N->getValueType(0);
+  SDValue Src = N->getOperand(0);
+  EVT SrcVT = Src.getValueType();
+  if (!DCI.isBeforeLegalize() || !Subtarget.isR5900() || Subtarget.hasMSA() ||
+      (VT != MVT::v8i16 && VT != MVT::v16i8) || !SrcVT.isSimple() ||
+      SrcVT.getScalarSizeInBits() > 32)
+    return SDValue();
+  return truncateMMI(Src, VT, SDLoc(N), DAG);
+}
+
 SDValue
 MipsSETargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
   SelectionDAG &DAG = DCI.DAG;
@@ -1229,7 +1424,13 @@ MipsSETargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
     Val = performORCombine(N, DAG, DCI, Subtarget);
     break;
   case ISD::MUL:
+    if (SDValue R = performMMIWideningMulCombine(N, DAG, DCI, Subtarget))
+      return R;
     return performMULCombine(N, DAG, DCI, this, Subtarget);
+  case ISD::ADD:
+    if (SDValue R = performMMIMulHAddCombine(N, DAG, DCI, Subtarget))
+      return R;
+    break;
   case ISD::SHL:
     Val = performSHLCombine(N, DAG, DCI, Subtarget);
     break;
@@ -1244,6 +1445,14 @@ MipsSETargetLowering::PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const {
     break;
   case ISD::SETCC:
     Val = performSETCCCombine(N, DAG);
+    break;
+  case ISD::SIGN_EXTEND:
+  case ISD::ZERO_EXTEND:
+  case ISD::ANY_EXTEND:
+    Val = performMMIExtendCombine(N, DAG, DCI, Subtarget);
+    break;
+  case ISD::TRUNCATE:
+    Val = performMMITruncateCombine(N, DAG, DCI, Subtarget);
     break;
   case ISD::FP_TO_UINT:
     Val = performFP_TO_UINTCombine(N, DAG);
@@ -1573,6 +1782,23 @@ SDValue MipsSETargetLowering::lowerBITCAST(SDValue Op,
 
   // Skip other cases of bitcast and use default lowering.
   return SDValue();
+}
+
+// PMULTW and PMULTUW write the 64-bit product of two words to a GPR, with no
+// MFLO/MFHI to combine the halves.
+SDValue MipsSETargetLowering::lowerR5900WideningMul(SDValue Op,
+                                                    SelectionDAG &DAG) const {
+  SDValue A = Op.getOperand(0), B = Op.getOperand(1);
+  SDLoc DL(Op);
+  unsigned Opc;
+  if (DAG.ComputeNumSignBits(A) > 32 && DAG.ComputeNumSignBits(B) > 32)
+    Opc = MipsISD::PMult;
+  else if (APInt High = APInt::getHighBitsSet(64, 32);
+           DAG.MaskedValueIsZero(A, High) && DAG.MaskedValueIsZero(B, High))
+    Opc = MipsISD::PMultu;
+  else
+    return SDValue();
+  return DAG.getNode(Opc, DL, MVT::i64, A, B);
 }
 
 SDValue MipsSETargetLowering::lowerMulDiv(SDValue Op, unsigned NewOpc,
@@ -2709,6 +2935,90 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_VOID(SDValue Op,
   }
 }
 
+// R5900 128-bit integer vectors live in a GPR128; individual 64-bit halves are
+// reached with PCPYLD/PCPYUD (MMILo/MMIHi) and rebuilt with MMIPack.
+static SDValue getMMIHalf(SelectionDAG &DAG, const SDLoc &DL, SDValue Vec,
+                          unsigned Half) {
+  SDValue V = DAG.getNode(ISD::BITCAST, DL, MVT::v2i64, Vec);
+  return DAG.getNode(Half ? MipsISD::MMIHi : MipsISD::MMILo, DL, MVT::i64, V);
+}
+
+// Extract a constant-index element through the 64-bit half that holds it.
+static SDValue lowerR5900ExtractElt(SDValue Op, SelectionDAG &DAG) {
+  auto *Idx = dyn_cast<ConstantSDNode>(Op.getOperand(1));
+  if (!Idx)
+    return SDValue();
+  SDLoc DL(Op);
+  SDValue Vec = Op.getOperand(0);
+  unsigned EltBits = Vec.getValueType().getScalarSizeInBits();
+  unsigned Bit = Idx->getZExtValue() * EltBits;
+  SDValue Half = getMMIHalf(DAG, DL, Vec, Bit / 64);
+  if (Bit % 64)
+    Half = DAG.getNode(ISD::SRL, DL, MVT::i64, Half,
+                       DAG.getConstant(Bit % 64, DL, MVT::i64));
+  return DAG.getAnyExtOrTrunc(Half, DL, Op.getValueType());
+}
+
+// A single-input shuffle that moves every defined element down by a constant
+// number of lanes, staying inside one 64-bit half (or taking the upper half
+// into the lower one), needs only a shift or PCPYUD.
+static SDValue lowerR5900Shuffle(SDValue Op, SelectionDAG &DAG) {
+  auto *SVN = cast<ShuffleVectorSDNode>(Op);
+  EVT VT = Op.getValueType();
+  if (!Op.getOperand(1).isUndef())
+    return SDValue();
+  unsigned NumElts = VT.getVectorNumElements();
+  unsigned EltBits = VT.getScalarSizeInBits();
+  unsigned PerHalf = 64 / EltBits;
+  int K = -1;
+  unsigned LastDef = 0;
+  for (unsigned I = 0; I != NumElts; ++I) {
+    int M = SVN->getMaskElt(I);
+    if (M < 0)
+      continue;
+    if (M < int(I) || M >= int(NumElts) || (K >= 0 && M - int(I) != K))
+      return SDValue();
+    K = M - int(I);
+    LastDef = I;
+  }
+  if (K <= 0)
+    return SDValue();
+  SDLoc DL(Op);
+  SDValue Src = Op.getOperand(0);
+  SDValue Lo;
+  if (unsigned(K) == PerHalf && LastDef < PerHalf) {
+    Lo = getMMIHalf(DAG, DL, Src, 1);
+  } else if (unsigned(K) < PerHalf && LastDef + K < PerHalf) {
+    Lo = DAG.getNode(ISD::SRL, DL, MVT::i64, getMMIHalf(DAG, DL, Src, 0),
+                     DAG.getConstant(K * EltBits, DL, MVT::i64));
+  } else {
+    return SDValue();
+  }
+  SDValue Pack = DAG.getNode(MipsISD::MMIPack, DL, MVT::v2i64,
+                             DAG.getUNDEF(MVT::i64), Lo);
+  return DAG.getNode(ISD::BITCAST, DL, VT, Pack);
+}
+
+// Replicate a scalar across a vector: double the zero-extended element up to
+// 64 bits with shift/or, then pack the two halves.
+static SDValue lowerR5900Splat(SDValue Op, SelectionDAG &DAG) {
+  EVT VT = Op.getValueType();
+  unsigned EltBits = VT.getScalarSizeInBits();
+  SDValue Splat = cast<BuildVectorSDNode>(Op)->getSplatValue();
+  if (!Splat || EltBits >= 64)
+    return SDValue();
+  SDLoc DL(Op);
+  SDValue Rep = DAG.getZeroExtendInReg(
+      DAG.getAnyExtOrTrunc(Splat, DL, MVT::i64), DL,
+      EVT::getIntegerVT(*DAG.getContext(), EltBits));
+  for (unsigned Sh = EltBits; Sh < 64; Sh *= 2)
+    Rep = DAG.getNode(ISD::OR, DL, MVT::i64, Rep,
+                      DAG.getNode(ISD::SHL, DL, MVT::i64, Rep,
+                                  DAG.getConstant(Sh, DL, MVT::i64)));
+  SDValue Pack = DAG.getNode(MipsISD::MMIPack, DL, MVT::v2i64, Rep, Rep);
+  return DAG.getNode(ISD::BITCAST, DL, VT, Pack);
+}
+
 // Lower ISD::EXTRACT_VECTOR_ELT into MipsISD::VEXTRACT_SEXT_ELT.
 //
 // The non-value bits resulting from ISD::EXTRACT_VECTOR_ELT are undefined. We
@@ -2722,6 +3032,9 @@ lowerEXTRACT_VECTOR_ELT(SDValue Op, SelectionDAG &DAG) const {
   EVT ResTy = Op->getValueType(0);
   SDValue Op0 = Op->getOperand(0);
   EVT VecTy = Op0->getValueType(0);
+
+  if (Subtarget.isR5900() && !Subtarget.hasMSA())
+    return lowerR5900ExtractElt(Op, DAG);
 
   if (!VecTy.is128BitVector())
     return SDValue();
@@ -2772,7 +3085,7 @@ SDValue MipsSETargetLowering::lowerBUILD_VECTOR(SDValue Op,
     if (ISD::isBuildVectorAllOnes(Op.getNode()) ||
         ISD::isBuildVectorAllZeros(Op.getNode()))
       return Op;
-    return SDValue();
+    return lowerR5900Splat(Op, DAG);
   }
 
   BuildVectorSDNode *Node = cast<BuildVectorSDNode>(Op);
@@ -3325,6 +3638,9 @@ SDValue MipsSETargetLowering::lowerVECTOR_SHUFFLE(SDValue Op,
                                                   SelectionDAG &DAG) const {
   ShuffleVectorSDNode *Node = cast<ShuffleVectorSDNode>(Op);
   EVT ResTy = Op->getValueType(0);
+
+  if (Subtarget.isR5900() && !Subtarget.hasMSA())
+    return lowerR5900Shuffle(Op, DAG);
 
   if (!ResTy.is128BitVector())
     return SDValue();

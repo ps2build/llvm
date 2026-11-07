@@ -19,6 +19,6 @@ define float @test_dot2(ptr %a, ptr %b) {
   %b1 = load float, ptr %pb1
   %m0 = fmul float %a0, %b0
   %m1 = fmul float %a1, %b1
-  %s = fadd float %m0, %m1
+  %s = fsub float %m0, %m1
   ret float %s
 }

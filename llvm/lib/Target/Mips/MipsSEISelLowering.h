@@ -81,6 +81,7 @@ using TargetRegisterClass = MCRegisterClass;
     SDValue lowerSTORE(SDValue Op, SelectionDAG &DAG) const;
     SDValue lowerBITCAST(SDValue Op, SelectionDAG &DAG) const;
 
+    SDValue lowerR5900WideningMul(SDValue Op, SelectionDAG &DAG) const;
     SDValue lowerMulDiv(SDValue Op, unsigned NewOpc, bool HasLo, bool HasHi,
                         SelectionDAG &DAG) const;
 

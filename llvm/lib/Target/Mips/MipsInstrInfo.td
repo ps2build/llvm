@@ -115,6 +115,10 @@ def MipsMTLOHI : SDNode<"MipsISD::MTLOHI", SDT_MTLOHI>;
 def MipsMult  : SDNode<"MipsISD::Mult", SDT_MipsMultDiv>;
 def MipsMultu : SDNode<"MipsISD::Multu", SDT_MipsMultDiv>;
 
+// R5900 widening multiplies that write a GPR64 instead of HI/LO.
+def MipsPMult  : SDNode<"MipsISD::PMult", SDTIntBinOp>;
+def MipsPMultu : SDNode<"MipsISD::PMultu", SDTIntBinOp>;
+
 // MAdd*/MSub* nodes
 def MipsMAdd  : SDNode<"MipsISD::MAdd", SDT_MipsMAddMSub>;
 def MipsMAddu : SDNode<"MipsISD::MAddu", SDT_MipsMAddMSub>;
@@ -2583,6 +2587,12 @@ let AdditionalPredicates = [NotInMicroMips] in {
               INSN_MIPS3_32_NOT_32R6_64R6;
   def PREF :  MMRel, CacheOp<"pref", mem>, CACHEOP_FM<0b110011>,
               INSN_MIPS3_32_NOT_32R6_64R6;
+}
+
+let AdditionalPredicates = [NotInMicroMips] in {
+  let EncodingPredicates = [HasStdEnc], InsnPredicates = [IsR5900] in
+    def : MipsPat<(prefetch addr:$addr, timm, timm, (i32 1)),
+                  (PREF addr:$addr, 0)>;
 }
 // FIXME: We are missing the prefx instruction.
 def ROL : MipsAsmPseudoInst<(outs),

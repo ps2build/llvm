@@ -1,0 +1,3 @@
+# RUN: llvm-mc --disassemble %s -triple=mips64el-unknown-linux -mcpu=r5900 | FileCheck %s
+
+0x00 0x00 0x80 0xcd # CHECK: pref 0, 0($12)

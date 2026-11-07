@@ -1085,6 +1085,47 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
     return true;
   }
 
+  case MipsISD::MMIMulH: {
+    // Both products come from one PMULTH_128; the vectors live in MSA128
+    // classes, so move them through GPR128 by hand.
+    auto ToGPR = [&](SDValue V) {
+      SDValue RC = CurDAG->getTargetConstant(Mips::GPR128RegClassID, DL,
+                                             MVT::i32);
+      return SDValue(CurDAG->getMachineNode(TargetOpcode::COPY_TO_REGCLASS, DL,
+                                            MVT::i128, V, RC),
+                     0);
+    };
+    // Every operand of a chain is live at once, so long sums are split into
+    // chains of a few products whose results are added.
+    const unsigned MaxOps = 12;
+    SDValue Sum[2];
+    for (unsigned Begin = 0, N = Node->getNumOperands(); Begin < N;
+         Begin += MaxOps) {
+      SmallVector<SDValue, 12> Ops;
+      for (unsigned I = Begin, E = std::min(N, Begin + MaxOps); I != E; ++I)
+        Ops.push_back(ToGPR(Node->getOperand(I)));
+      SDNode *M = CurDAG->getMachineNode(Mips::PMULTH_128, DL, MVT::i128,
+                                         MVT::i128, Ops);
+      for (unsigned I = 0; I != 2; ++I)
+        Sum[I] = Begin == 0 ? SDValue(M, I)
+                            : SDValue(CurDAG->getMachineNode(
+                                          Mips::PADDW_128, DL, MVT::i128,
+                                          Sum[I], SDValue(M, I)),
+                                      0);
+    }
+    for (unsigned I = 0; I != 2; ++I) {
+      SDValue RC = CurDAG->getTargetConstant(Mips::MSA128WRegClassID, DL,
+                                             MVT::i32);
+      SDValue R = SDValue(CurDAG->getMachineNode(
+                              TargetOpcode::COPY_TO_REGCLASS, DL, MVT::v4i32,
+                              Sum[I], RC),
+                          0);
+      ReplaceUses(SDValue(Node, I), R);
+    }
+    CurDAG->RemoveDeadNode(Node);
+    return true;
+  }
+
   case ISD::BUILD_VECTOR: {
     // Select appropriate ldi.[bhwd] instructions for constant splats of
     // 128-bit when MSA is enabled. Fixup any register class mismatches that

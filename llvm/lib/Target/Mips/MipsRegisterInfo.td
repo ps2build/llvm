@@ -277,6 +277,9 @@ let Namespace = "Mips" in {
   def DSPOutFlag23 : Register<"">;
   def DSPCCond : Register<"">;
 
+  // R5900 FPU accumulator, written by mula.s and the like.
+  def FPU_ACC : MipsReg<0, "fpu_acc">;
+
   let SubRegIndices = [sub_dsp16_19, sub_dsp20, sub_dsp21, sub_dsp22,
                        sub_dsp23] in
   def DSPOutFlag : RegisterWithSubRegs<"", [DSPOutFlag16_19, DSPOutFlag20,
@@ -462,6 +465,9 @@ def CCR : RegisterClass<"Mips", [i32], 32, (sequence "FCR%u", 0, 31)>,
 // FP condition code registers.
 def FCC : RegisterClass<"Mips", [i32], 32, (sequence "FCC%u", 0, 7)>,
           Unallocatable;
+
+// The R5900 FPU accumulator.
+def FPUACC : RegisterClass<"Mips", [f32], 32, (add FPU_ACC)>, Unallocatable;
 
 // MIPS32r6/MIPS64r6 store FPU condition codes in normal FGR registers.
 // This class allows us to represent this in codegen patterns.

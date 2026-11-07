@@ -1160,7 +1160,15 @@ def SQ : InstSE<(outs), (ins GPR64Opnd:$rt, mem:$addr), "sq\t$rt, $addr",
 // Code generation views of the MMI operations on whole 128-bit GPRs. They
 // are expanded after register allocation into the P_*, LQ and SQ
 // instructions, using the low 64-bit sub-register of each operand.
-let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1 in {
+// Signed 8x(16x16->32) multiply (PMULTH). The products 0,1,4,5 come back in
+// the first result and 2,3,6,7 in the second, as the LO and HI registers hold
+// them.
+// The operands are any number of v8i16 pairs; the products of all pairs are
+// summed (PMULTH, then PMADDH for each further pair).
+def SDT_MipsMMIMulH : SDTypeProfile<2, -1, [SDTCisVT<0, v4i32>,
+                                            SDTCisVT<1, v4i32>]>;
+def MipsMMIMulH : SDNode<"MipsISD::MMIMulH", SDT_MipsMMIMulH>;
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, hasSideEffects = 0 in {
 class MMI128_3R : PseudoSE<(outs GPR128:$rd), (ins GPR128:$rs, GPR128:$rt), []>;
 
 def PAND_128 : MMI128_3R;
@@ -1183,6 +1191,27 @@ def PMAXH_128 : MMI128_3R;
 def PMAXW_128 : MMI128_3R;
 def PMINH_128 : MMI128_3R;
 def PMINW_128 : MMI128_3R;
+def PADDSB_128 : MMI128_3R;
+def PADDSH_128 : MMI128_3R;
+def PADDSW_128 : MMI128_3R;
+def PSUBSB_128 : MMI128_3R;
+def PSUBSH_128 : MMI128_3R;
+def PSUBSW_128 : MMI128_3R;
+def PADDUB_128 : MMI128_3R;
+def PADDUH_128 : MMI128_3R;
+def PADDUW_128 : MMI128_3R;
+def PSUBUB_128 : MMI128_3R;
+def PSUBUH_128 : MMI128_3R;
+def PSUBUW_128 : MMI128_3R;
+def PEXTLB_128 : MMI128_3R;
+let Defs = [HI0, LO0], Constraints = "@earlyclobber $lo,@earlyclobber $hi" in
+def PMULTH_128 : PseudoSE<(outs GPR128:$lo, GPR128:$hi),
+                          (ins variable_ops), []>;
+def PEXTUB_128 : MMI128_3R;
+def PEXTLH_128 : MMI128_3R;
+def PEXTUH_128 : MMI128_3R;
+def PPACB_128 : MMI128_3R;
+def PPACH_128 : MMI128_3R;
 
 class MMI128_Sh : PseudoSE<(outs GPR128:$rd), (ins GPR128:$rt, uimm5:$shamt), []>;
 def PSLLH_128 : MMI128_Sh;
@@ -1209,10 +1238,16 @@ def MipsMMIGt : SDNode<"MipsISD::MMIGt", SDTIntBinOp>;
 def MipsMMIShl : SDNode<"MipsISD::MMIShl", SDT_MipsMMIShift>;
 def MipsMMISra : SDNode<"MipsISD::MMISra", SDT_MipsMMIShift>;
 def MipsMMISrl : SDNode<"MipsISD::MMISrl", SDT_MipsMMIShift>;
+// Interleave the low or high halves of two vectors, the first operand
+// supplying the odd elements (PEXTL*, PEXTU*), and pack the even elements of
+// two vectors, the first operand going to the high half (PPAC*).
+def MipsMMIExtLo : SDNode<"MipsISD::MMIExtLo", SDTIntBinOp>;
+def MipsMMIExtHi : SDNode<"MipsISD::MMIExtHi", SDTIntBinOp>;
+def MipsMMIPackEven : SDNode<"MipsISD::MMIPackEven", SDTIntBinOp>;
 def MipsMMILo : SDNode<"MipsISD::MMILo", SDT_MipsMMIPart>;
 def MipsMMIHi : SDNode<"MipsISD::MMIHi", SDT_MipsMMIPart>;
 
-let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1 in {
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, hasSideEffects = 0 in {
 def PCPYLD_V : PseudoSE<(outs GPR128:$rd), (ins GPR64:$rs, GPR64:$rt), []>;
 def PLO_V : PseudoSE<(outs GPR64:$rd), (ins GPR128:$rs), []>;
 def PCPYUD_V : PseudoSE<(outs GPR64:$rd), (ins GPR128:$rs, GPR128:$rt), []>;
@@ -1274,10 +1309,38 @@ foreach VT = [v16i8, v8i16, v4i32] in
                 (COPY_TO_REGCLASS (PNOR_128 (COPY_TO_REGCLASS VT:$rs, GPR128),
                                             (COPY_TO_REGCLASS VT:$rs, GPR128)),
                                   GPR128)>;
+def : MMI128Bin<saddsat, v16i8, PADDSB_128>;
+def : MMI128Bin<saddsat, v8i16, PADDSH_128>;
+def : MMI128Bin<saddsat, v4i32, PADDSW_128>;
+def : MMI128Bin<ssubsat, v16i8, PSUBSB_128>;
+def : MMI128Bin<ssubsat, v8i16, PSUBSH_128>;
+def : MMI128Bin<ssubsat, v4i32, PSUBSW_128>;
+def : MMI128Bin<uaddsat, v16i8, PADDUB_128>;
+def : MMI128Bin<uaddsat, v8i16, PADDUH_128>;
+def : MMI128Bin<uaddsat, v4i32, PADDUW_128>;
+def : MMI128Bin<usubsat, v16i8, PSUBUB_128>;
+def : MMI128Bin<usubsat, v8i16, PSUBUH_128>;
+def : MMI128Bin<usubsat, v4i32, PSUBUW_128>;
 def : MMI128Bin<smax, v8i16, PMAXH_128>;
 def : MMI128Bin<smax, v4i32, PMAXW_128>;
 def : MMI128Bin<smin, v8i16, PMINH_128>;
 def : MMI128Bin<smin, v4i32, PMINW_128>;
+
+// The zero vector is $zero in all 128 bits.
+class MMI128Ext<SDPatternOperator Op, ValueType VT, Instruction I>
+    : MipsPat<(Op immAllZerosV, VT:$rt),
+              (COPY_TO_REGCLASS (I GPR128_0, (COPY_TO_REGCLASS VT:$rt, GPR128)),
+                                GPR128)>;
+def : MMI128Bin<MipsMMIExtLo, v16i8, PEXTLB_128>;
+def : MMI128Bin<MipsMMIExtHi, v16i8, PEXTUB_128>;
+def : MMI128Bin<MipsMMIExtLo, v8i16, PEXTLH_128>;
+def : MMI128Bin<MipsMMIExtHi, v8i16, PEXTUH_128>;
+def : MMI128Bin<MipsMMIPackEven, v16i8, PPACB_128>;
+def : MMI128Bin<MipsMMIPackEven, v8i16, PPACH_128>;
+def : MMI128Ext<MipsMMIExtLo, v16i8, PEXTLB_128>;
+def : MMI128Ext<MipsMMIExtHi, v16i8, PEXTUB_128>;
+def : MMI128Ext<MipsMMIExtLo, v8i16, PEXTLH_128>;
+def : MMI128Ext<MipsMMIExtHi, v8i16, PEXTUH_128>;
 
 class MMI128Cmp<ValueType VT, CondCode CC, Instruction I>
     : MipsPat<(VT (setcc VT:$rs, VT:$rt, CC)),
@@ -1975,8 +2038,11 @@ def P_PMULTH : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
   let Inst{10-6} = 0x1c;
   let Inst{5-0} = 0x09;
 }
+let Defs = [HI0, LO0] in
 def P_PMULTUW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
-                 "pmultuw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+                 "pmultuw	$rd, $rs, $rt",
+                 [(set GPR64Opnd:$rd, (MipsPMultu GPR64Opnd:$rs, GPR64Opnd:$rt))],
+                 FrmOther>, StdArch {
   bits<5> rd;
   bits<5> rs;
   bits<5> rt;
@@ -1987,8 +2053,11 @@ def P_PMULTUW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
   let Inst{10-6} = 0xc;
   let Inst{5-0} = 0x29;
 }
+let Defs = [HI0, LO0] in
 def P_PMULTW : InstSE<(outs GPR64Opnd:$rd), (ins GPR64Opnd:$rs, GPR64Opnd:$rt),
-                 "pmultw\t$rd, $rs, $rt", [], FrmOther>, StdArch {
+                 "pmultw	$rd, $rs, $rt",
+                 [(set GPR64Opnd:$rd, (MipsPMult GPR64Opnd:$rs, GPR64Opnd:$rt))],
+                 FrmOther>, StdArch {
   bits<5> rd;
   bits<5> rs;
   bits<5> rt;
@@ -2778,4 +2847,39 @@ def MUL_R5900 : ArithLogicR<"mult", GPR32Opnd, 1, mul>,
                 R5900_RDRSRT_FM<0x00, 0x18>;
 def P_DIV1_Z  : R5900_DIVZ<"div1">,      R5900_ZRSRT_FM<0x1c, 0x1a>;
 def P_DIVU1_Z : R5900_DIVZ<"divu1">,     R5900_ZRSRT_FM<0x1c, 0x1b>;
+}
+
+// Scalar 32-bit signed max/min: the low word of PMAXW/PMINW. Inputs are kept
+// sign-extended, and so is the result, because the upper word is the max/min
+// of two sign words.
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, isCodeGenOnly = 1,
+    isCommutable = 1 in {
+def PMAXW_S : InstSE<(outs GPR32Opnd:$rd), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
+                 "pmaxw\t$rd, $rs, $rt",
+                 [(set GPR32Opnd:$rd, (smax GPR32Opnd:$rs, GPR32Opnd:$rt))],
+                 FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x3;
+  let Inst{5-0} = 0x08;
+}
+def PMINW_S : InstSE<(outs GPR32Opnd:$rd), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
+                 "pminw\t$rd, $rs, $rt",
+                 [(set GPR32Opnd:$rd, (smin GPR32Opnd:$rs, GPR32Opnd:$rt))],
+                 FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x3;
+  let Inst{5-0} = 0x28;
+}
 }

@@ -35,6 +35,8 @@ public:
   TypeSize
   getRegisterBitWidth(TTI::RegisterKind K) const override;
 
+  unsigned getNumberOfRegisters(unsigned ClassID) const override;
+
   InstructionCost getMemoryOpCost(
       unsigned Opcode, Type *Src, Align Alignment, unsigned AddressSpace,
       TTI::TargetCostKind CostKind,
@@ -44,6 +46,8 @@ public:
   unsigned getMaxInterleaveFactor(ElementCount VF,
                                   bool HasUnorderedReductions) const override;
 
+  bool preferEpilogueVectorization(ElementCount Iters) const override;
+
   bool hasDivRemOp(Type *DataType, bool IsSigned) const override;
 
   unsigned adjustInliningThreshold(const CallBase *CB) const override;
@@ -51,8 +55,17 @@ public:
                                TTI::UnrollingPreferences &UP,
                                OptimizationRemarkEmitter *ORE) const override;
 
+  bool isProfitableToSinkOperands(Instruction *I,
+                                  SmallVectorImpl<Use *> &Ops) const override;
   bool isLSRCostLess(const TargetTransformInfo::LSRCost &C1,
                      const TargetTransformInfo::LSRCost &C2) const override;
+
+  bool shouldMaximizeVectorBandwidth(
+      TargetTransformInfo::RegisterKind K) const override;
+
+  InstructionCost getCastInstrCost(
+      unsigned Opcode, Type *Dst, Type *Src, TTI::CastContextHint CCH,
+      TTI::TargetCostKind CostKind, const Instruction *I = nullptr) const override;
 
   InstructionCost getArithmeticInstrCost(
       unsigned Opcode, Type *Ty, TTI::TargetCostKind CostKind,

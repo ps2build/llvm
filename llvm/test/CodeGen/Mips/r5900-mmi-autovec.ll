@@ -29,9 +29,39 @@ exit:
   ret void
 }
 
-; Accesses below element alignment cost more than the scalar loop on hardware.
+; Element-aligned accesses go through ldl/ldr pairs and still pay off.
+; IR-LABEL: @add_arrays_elt_aligned(
+; IR: add <4 x i32>
+; ASM-LABEL: add_arrays_elt_aligned:
+; ASM: ldl
+; ASM: paddw
+define void @add_arrays_elt_aligned(ptr noalias %a, ptr noalias %b, ptr noalias %c, i32 %n) {
+entry:
+  %cmp = icmp sgt i32 %n, 0
+  br i1 %cmp, label %loop, label %exit
+loop:
+  %i = phi i32 [ 0, %entry ], [ %i.next, %loop ]
+  %pa = getelementptr inbounds i32, ptr %a, i32 %i
+  %pb = getelementptr inbounds i32, ptr %b, i32 %i
+  %pc = getelementptr inbounds i32, ptr %c, i32 %i
+  %x = load i32, ptr %pa, align 4
+  %y = load i32, ptr %pb, align 4
+  %z = add i32 %x, %y
+  store i32 %z, ptr %pc, align 4
+  %i.next = add nuw nsw i32 %i, 1
+  %done = icmp eq i32 %i.next, %n
+  br i1 %done, label %exit, label %loop
+exit:
+  ret void
+}
+
+; Byte-aligned accesses take lwl/lwr pairs when scalar, so the ldl/ldr form of
+; the vector loop still wins.
 ; IR-LABEL: @add_arrays_unaligned(
-; IR-NOT: <4 x i32>
+; IR: add <4 x i32>
+; ASM-LABEL: add_arrays_unaligned:
+; ASM: ldl
+; ASM: paddw
 define void @add_arrays_unaligned(ptr noalias %a, ptr noalias %b, ptr noalias %c, i32 %n) {
 entry:
   %cmp = icmp sgt i32 %n, 0

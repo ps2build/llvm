@@ -254,6 +254,9 @@ MipsTargetLowering::MipsTargetLowering(const MipsTargetMachine &TM,
       getTargetMachine().getTargetTriple().isOSLinux())
     setOperationAction(ISD::READCYCLECOUNTER, MVT::i64, Custom);
 
+  if (Subtarget.isR5900())
+    setOperationAction(ISD::PREFETCH, MVT::Other, Custom);
+
   // Lower fmin/fmax/fclass operations for MIPS R6.
   if (Subtarget.hasMips32r6()) {
     setOperationAction(ISD::FMINNUM_IEEE, MVT::f32, Legal);
@@ -427,6 +430,12 @@ MipsTargetLowering::MipsTargetLowering(const MipsTargetMachine &TM,
   setTargetDAGCombine({ISD::SDIVREM, ISD::UDIVREM, ISD::SELECT, ISD::AND,
                        ISD::OR, ISD::ADD, ISD::SUB, ISD::AssertZext, ISD::SHL,
                        ISD::SIGN_EXTEND});
+
+  // The R5900's PMAXW/PMINW do a 32-bit signed max/min in one instruction.
+  if (Subtarget.isR5900()) {
+    setOperationAction(ISD::SMAX, MVT::i32, Legal);
+    setOperationAction(ISD::SMIN, MVT::i32, Legal);
+  }
 
   // R5900 has no LL/SC instructions for atomic operations
   if (Subtarget.isR5900())
@@ -1301,6 +1310,8 @@ LowerOperation(SDValue Op, SelectionDAG &DAG) const
   case ISD::FP_TO_SINT:         return lowerFP_TO_SINT(Op, DAG);
   case ISD::READCYCLECOUNTER:
     return lowerREADCYCLECOUNTER(Op, DAG);
+  case ISD::PREFETCH:
+    return lowerPREFETCH(Op, DAG);
   }
   return SDValue();
 }
@@ -2131,6 +2142,11 @@ MachineBasicBlock *MipsTargetLowering::emitAtomicCmpSwapPartword(
   MI.eraseFromParent(); // The instruction is gone now.
 
   return exitMBB;
+}
+
+SDValue MipsTargetLowering::lowerPREFETCH(SDValue Op, SelectionDAG &DAG) const {
+  bool IsData = Op.getConstantOperandVal(4);
+  return IsData ? Op : Op.getOperand(0);
 }
 
 SDValue MipsTargetLowering::lowerREADCYCLECOUNTER(SDValue Op,

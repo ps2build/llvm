@@ -15,6 +15,7 @@
 #include "MCTargetDesc/MipsMCTargetDesc.h"
 #include "Mips.h"
 #include "MipsSubtarget.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -32,6 +33,7 @@
 #include "llvm/MC/MCInstrDesc.h"
 #include "llvm/Target/TargetMachine.h"
 #include <cassert>
+#include <optional>
 
 using namespace llvm;
 
@@ -147,6 +149,87 @@ void MipsInstrInfo::BuildCondBr(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
     MIB.add(Cond[i]);
   }
   MIB.addMBB(TBB);
+}
+
+namespace {
+/// A single block loop that ends in "if (Cond) goto exit". The pipeliner keeps
+/// the instructions that compute the condition in stage 0 and tests the
+/// condition again in front of each stage of the prologue.
+class MipsPipelinerLoopInfo : public TargetInstrInfo::PipelinerLoopInfo {
+  SmallVector<const MachineInstr *, 2> CondDefs;
+  SmallVector<MachineOperand, 4> Cond;
+
+public:
+  MipsPipelinerLoopInfo(ArrayRef<const MachineInstr *> CondDefs,
+                        ArrayRef<MachineOperand> Cond)
+      : CondDefs(CondDefs), Cond(Cond) {}
+
+  bool shouldIgnoreForPipelining(const MachineInstr *MI) const override {
+    return is_contained(CondDefs, MI);
+  }
+
+  std::optional<bool> createTripCountGreaterCondition(
+      int TC, MachineBasicBlock &MBB,
+      SmallVectorImpl<MachineOperand> &CondParam) override {
+    CondParam = Cond;
+    return {};
+  }
+
+  void setPreheader(MachineBasicBlock *NewPreheader) override {}
+  void adjustTripCount(int TripCountAdjust) override {}
+};
+} // namespace
+
+std::unique_ptr<TargetInstrInfo::PipelinerLoopInfo>
+MipsInstrInfo::analyzeLoopForPipelining(MachineBasicBlock *LoopBB) const {
+  if (!Subtarget.isR5900())
+    return nullptr;
+  const MachineRegisterInfo &MRI = LoopBB->getParent()->getRegInfo();
+
+  // The FPU and MMI operations take several cycles and gain from overlapping
+  // iterations; integer loops are short enough already.
+  auto IsMultiCycle = [&](const MachineInstr &MI) {
+    return any_of(MI.defs(), [&](const MachineOperand &MO) {
+      if (!MO.isReg() || !MO.getReg().isVirtual())
+        return false;
+      const TargetRegisterClass *RC = MRI.getRegClass(MO.getReg());
+      return RC == &Mips::FGR32RegClass || RC == &Mips::GPR128RegClass;
+    });
+  };
+  if (none_of(*LoopBB, IsMultiCycle))
+    return nullptr;
+
+  // A sum that stays in the FPU accumulator through the loop
+  // (MipsR5900LoopAcc) can not overlap with the next iteration.
+  if (LoopBB->isLiveIn(Mips::FPU_ACC))
+    return nullptr;
+
+  MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
+  SmallVector<MachineOperand, 4> Cond;
+  if (analyzeBranch(*LoopBB, TBB, FBB, Cond, /*AllowModify=*/false) ||
+      Cond.empty() || TBB == FBB || (TBB != LoopBB && FBB != LoopBB))
+    return nullptr;
+  // Cond is true when the loop exits.
+  if (TBB == LoopBB && reverseBranchCondition(Cond))
+    return nullptr;
+
+  SmallVector<const MachineInstr *, 2> CondDefs;
+  for (const MachineOperand &MO : drop_begin(Cond)) {
+    if (!MO.isReg())
+      continue;
+    // A condition in a physical register is not copied in front of the
+    // branches of the prologue.
+    if (MO.getReg().isPhysical() && !MRI.isConstantPhysReg(MO.getReg()))
+      return nullptr;
+    if (!MO.getReg().isVirtual())
+      continue;
+    const MachineInstr *Def = MRI.getVRegDef(MO.getReg());
+    if (!Def || Def->isPHI())
+      return nullptr;
+    if (Def->getParent() == LoopBB)
+      CondDefs.push_back(Def);
+  }
+  return std::make_unique<MipsPipelinerLoopInfo>(CondDefs, Cond);
 }
 
 unsigned MipsInstrInfo::insertBranch(MachineBasicBlock &MBB,

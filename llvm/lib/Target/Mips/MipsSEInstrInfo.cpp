@@ -518,6 +518,78 @@ bool MipsSEInstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
   case Mips::PCGTW_128:
     expandMMI128(MBB, MI, Mips::P_PCGTW);
     break;
+  case Mips::PADDSB_128:
+    expandMMI128(MBB, MI, Mips::P_PADDSB);
+    break;
+  case Mips::PADDSH_128:
+    expandMMI128(MBB, MI, Mips::P_PADDSH);
+    break;
+  case Mips::PADDSW_128:
+    expandMMI128(MBB, MI, Mips::P_PADDSW);
+    break;
+  case Mips::PSUBSB_128:
+    expandMMI128(MBB, MI, Mips::P_PSUBSB);
+    break;
+  case Mips::PSUBSH_128:
+    expandMMI128(MBB, MI, Mips::P_PSUBSH);
+    break;
+  case Mips::PSUBSW_128:
+    expandMMI128(MBB, MI, Mips::P_PSUBSW);
+    break;
+  case Mips::PADDUB_128:
+    expandMMI128(MBB, MI, Mips::P_PADDUB);
+    break;
+  case Mips::PADDUH_128:
+    expandMMI128(MBB, MI, Mips::P_PADDUH);
+    break;
+  case Mips::PADDUW_128:
+    expandMMI128(MBB, MI, Mips::P_PADDUW);
+    break;
+  case Mips::PSUBUB_128:
+    expandMMI128(MBB, MI, Mips::P_PSUBUB);
+    break;
+  case Mips::PSUBUH_128:
+    expandMMI128(MBB, MI, Mips::P_PSUBUH);
+    break;
+  case Mips::PSUBUW_128:
+    expandMMI128(MBB, MI, Mips::P_PSUBUW);
+    break;
+  case Mips::PMULTH_128: {
+    // PMULTH leaves the products in LO and HI; read both out.
+    const TargetRegisterInfo *TRI = &getRegisterInfo();
+    auto Sub = [&](unsigned Idx) {
+      return TRI->getSubReg(MI.getOperand(Idx).getReg(), Mips::sub_64);
+    };
+    DebugLoc DL = MI.getDebugLoc();
+    // The first pair starts the sum, each further pair accumulates into it.
+    // The scratch destination is the (early clobber) low result.
+    for (unsigned I = 2, E = MI.getNumExplicitOperands(); I != E; I += 2)
+      BuildMI(MBB, MI, DL, get(I == 2 ? Mips::P_PMULTH : Mips::P_PMADDH),
+              Sub(0))
+          .addReg(Sub(I), getKillRegState(MI.getOperand(I).isKill()))
+          .addReg(Sub(I + 1), getKillRegState(MI.getOperand(I + 1).isKill()));
+    BuildMI(MBB, MI, DL, get(Mips::P_PMFLO), Sub(0));
+    BuildMI(MBB, MI, DL, get(Mips::P_PMFHI), Sub(1));
+    break;
+  }
+  case Mips::PEXTLB_128:
+    expandMMI128(MBB, MI, Mips::P_PEXTLB);
+    break;
+  case Mips::PEXTUB_128:
+    expandMMI128(MBB, MI, Mips::P_PEXTUB);
+    break;
+  case Mips::PEXTLH_128:
+    expandMMI128(MBB, MI, Mips::P_PEXTLH);
+    break;
+  case Mips::PEXTUH_128:
+    expandMMI128(MBB, MI, Mips::P_PEXTUH);
+    break;
+  case Mips::PPACB_128:
+    expandMMI128(MBB, MI, Mips::P_PPACB);
+    break;
+  case Mips::PPACH_128:
+    expandMMI128(MBB, MI, Mips::P_PPACH);
+    break;
   case Mips::PMAXH_128:
     expandMMI128(MBB, MI, Mips::P_PMAXH);
     break;

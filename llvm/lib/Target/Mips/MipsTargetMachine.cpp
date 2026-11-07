@@ -272,6 +272,9 @@ void MipsPassConfig::addPreRegAlloc() {
   if (getMipsSubtarget().isR5900() && getOptLevel() != CodeGenOptLevel::None) {
     addPass(createMipsR5900LoopAccPass());
     addPass(createMipsR5900FPUAccPass());
+    // Software pipeline single block loops (MipsSubtarget::
+    // enableMachinePipeliner).
+    addPass(&MachinePipelinerID);
   }
   addPass(createMipsSetMachineRegisterFlagsPass());
 }

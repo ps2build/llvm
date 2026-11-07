@@ -286,6 +286,11 @@ public:
   CodeGenOptLevel getOptLevelToEnablePostRAScheduler() const override;
   bool useAA() const override;
 
+  /// The R5900 is in order and its FPU and MMI operations take several cycles,
+  /// so overlapping the iterations of a loop hides their latency.
+  bool enableMachinePipeliner() const override;
+  bool useDFAforSMS() const override { return false; }
+
   bool isABI_N64() const;
   bool isABI_N32() const;
   bool isABI_O32() const;

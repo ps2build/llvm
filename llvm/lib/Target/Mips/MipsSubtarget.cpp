@@ -27,6 +27,10 @@
 
 using namespace llvm;
 
+static cl::opt<bool> R5900Pipeliner(
+    "mips-r5900-pipeliner", cl::Hidden, cl::init(true),
+    cl::desc("Software pipeline the loops of the R5900"));
+
 cl::opt<CompactBranchPolicy> MipsCompactBranchPolicy(
     "mips-compact-branches", cl::Optional, cl::init(CB_Optimal),
     cl::desc("MIPS Specific: Compact branch policy."),
@@ -261,6 +265,10 @@ void MipsSubtarget::overrideSchedPolicy(MachineSchedPolicy &Policy,
     Policy.OnlyBottomUp = false;
     Policy.OnlyTopDown = true;
   }
+}
+
+bool MipsSubtarget::enableMachinePipeliner() const {
+  return IsR5900 && R5900Pipeliner;
 }
 
 void MipsSubtarget::getCriticalPathRCs(RegClassVector &CriticalPathRCs) const {

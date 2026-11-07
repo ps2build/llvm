@@ -108,4 +108,13 @@ def : InstRW<[R5900WriteIMul], (instregex
 def : InstRW<[R5900WriteIDiv], (instregex
   "^(DIV|DIVu|SDIV|UDIV|PseudoSDIV|PseudoUDIV)$")>;
 
+// MMI operations other than the multiply-accumulates occupy both integer
+// pipes, so nothing else issues beside them.
+def R5900WriteMMI : SchedWriteRes<[R5900ALU0, R5900ALU1]>;
+def : InstRW<[R5900WriteMMI], (instregex
+  "^P_P(ABS|ADD|ADS|AND|CEQ|CGT|CPY|EX|INT|LZ|MAX|MIN|NOR|OR|PA|REV|ROT|SLL|"
+  "SRA|SRL|SUB|XOR)",
+  "^P(AND|OR|XOR|NOR|ADD|SUB|CEQ|CGT|MAX|MIN|EXT|PAC|SLL|SRA|SRL)[A-Z0-9]*_128$",
+  "^PCPY(LD|UD)_V$", "^P(MAX|MIN)W_S$")>;
+
 }

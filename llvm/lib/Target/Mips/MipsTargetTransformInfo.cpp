@@ -35,12 +35,11 @@ unsigned MipsTTIImpl::getMaxInterleaveFactor(ElementCount VF,
   return BaseT::getMaxInterleaveFactor(VF, HasUnorderedReductions);
 }
 
-// A vectorized remainder loop would run at most one narrower vector iteration
-// and pays for it with stack round-trips (no cheap element insert), so the
-// scalar remainder is better.
+// With 32-element main iterations, the scalar remainder of an i16 loop runs up
+// to 31 iterations; an 8-wide vector epilogue removes most of them.
 bool MipsTTIImpl::preferEpilogueVectorization(ElementCount Iters) const {
   if (ST->isR5900() && !ST->hasMSA())
-    return false;
+    return true;
   return BaseT::preferEpilogueVectorization(Iters);
 }
 

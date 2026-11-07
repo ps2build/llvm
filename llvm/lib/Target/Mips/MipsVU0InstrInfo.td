@@ -2848,3 +2848,38 @@ def MUL_R5900 : ArithLogicR<"mult", GPR32Opnd, 1, mul>,
 def P_DIV1_Z  : R5900_DIVZ<"div1">,      R5900_ZRSRT_FM<0x1c, 0x1a>;
 def P_DIVU1_Z : R5900_DIVZ<"divu1">,     R5900_ZRSRT_FM<0x1c, 0x1b>;
 }
+
+// Scalar 32-bit signed max/min: the low word of PMAXW/PMINW. Inputs are kept
+// sign-extended, and so is the result, because the upper word is the max/min
+// of two sign words.
+let Predicates = [IsR5900Pred], hasNoSchedulingInfo = 1, isCodeGenOnly = 1,
+    isCommutable = 1 in {
+def PMAXW_S : InstSE<(outs GPR32Opnd:$rd), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
+                 "pmaxw\t$rd, $rs, $rt",
+                 [(set GPR32Opnd:$rd, (smax GPR32Opnd:$rs, GPR32Opnd:$rt))],
+                 FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x3;
+  let Inst{5-0} = 0x08;
+}
+def PMINW_S : InstSE<(outs GPR32Opnd:$rd), (ins GPR32Opnd:$rs, GPR32Opnd:$rt),
+                 "pminw\t$rd, $rs, $rt",
+                 [(set GPR32Opnd:$rd, (smin GPR32Opnd:$rs, GPR32Opnd:$rt))],
+                 FrmOther>, StdArch {
+  bits<5> rd;
+  bits<5> rs;
+  bits<5> rt;
+  let Inst{31-26} = 0x1c;
+  let Inst{25-21} = rs;
+  let Inst{20-16} = rt;
+  let Inst{15-11} = rd;
+  let Inst{10-6} = 0x3;
+  let Inst{5-0} = 0x28;
+}
+}

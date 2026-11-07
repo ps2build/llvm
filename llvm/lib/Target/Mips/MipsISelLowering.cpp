@@ -431,6 +431,12 @@ MipsTargetLowering::MipsTargetLowering(const MipsTargetMachine &TM,
                        ISD::OR, ISD::ADD, ISD::SUB, ISD::AssertZext, ISD::SHL,
                        ISD::SIGN_EXTEND});
 
+  // The R5900's PMAXW/PMINW do a 32-bit signed max/min in one instruction.
+  if (Subtarget.isR5900()) {
+    setOperationAction(ISD::SMAX, MVT::i32, Legal);
+    setOperationAction(ISD::SMIN, MVT::i32, Legal);
+  }
+
   // R5900 has no LL/SC instructions for atomic operations
   if (Subtarget.isR5900())
     setMaxAtomicSizeInBitsSupported(0);

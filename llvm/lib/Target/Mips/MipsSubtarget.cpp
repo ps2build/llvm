@@ -18,6 +18,7 @@
 #include "MipsRegisterInfo.h"
 #include "MipsSelectionDAGInfo.h"
 #include "MipsTargetMachine.h"
+#include "llvm/CodeGen/MachineScheduler.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/MC/TargetRegistry.h"

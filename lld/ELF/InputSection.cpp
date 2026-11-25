@@ -470,6 +470,24 @@ void InputSection::copyRelocations(Ctx &ctx, uint8_t *buf) {
   }
 }
 
+// The "low" relocation type that completes the addend of a MIPS REL "high"
+// relocation against a section symbol, or R_MIPS_NONE. A section symbol is
+// local, so R_MIPS_GOT16 is paired too.
+static RelType getMipsRelPairType(RelType type) {
+  switch (type) {
+  case R_MIPS_HI16:
+  case R_MIPS_GOT16:
+    return R_MIPS_LO16;
+  case R_MIPS_PCHI16:
+    return R_MIPS_PCLO16;
+  case R_MICROMIPS_HI16:
+  case R_MICROMIPS_GOT16:
+    return R_MICROMIPS_LO16;
+  default:
+    return R_MIPS_NONE;
+  }
+}
+
 // This is used for -r and --emit-relocs. We can't use memcpy to copy
 // relocations because we need to update symbol table offset and section index
 // for each relocation. So we copy relocations one by one.
@@ -480,7 +498,8 @@ void InputSection::copyRelocations(Ctx &ctx, uint8_t *buf,
   InputSectionBase *sec = getRelocatedSection();
   (void)sec->contentMaybeDecompress(); // uncompress if needed
 
-  for (const Relocation &rel : rels) {
+  for (auto it = rels.begin(), end = rels.end(); it != end; ++it) {
+    const Relocation &rel = *it;
     RelType type = rel.type;
     const ObjFile<ELFT> *file = getFile<ELFT>();
     Symbol &sym = *rel.sym;
@@ -529,8 +548,34 @@ void InputSection::copyRelocations(Ctx &ctx, uint8_t *buf,
 
       int64_t addend = rel.addend;
       const uint8_t *bufLoc = sec->content().begin() + rel.offset;
-      if (!RelTy::HasAddend)
+      if (!RelTy::HasAddend) {
         addend = target.getImplicitAddend(bufLoc, type);
+        // A MIPS REL "high" relocation holds only the upper half of its
+        // addend; the lower half is in the paired "low" relocation that
+        // follows. The section symbol's new value is added to the whole
+        // addend, so the low half must be known here: the high half carries
+        // when the low half of the sum reaches 0x8000. Without it the
+        // output's high half was computed from the upper half alone and
+        // came out 0x10000 too low whenever only the full sum carries.
+        if (ctx.arg.emachine == EM_MIPS && ctx.arg.relocatable) {
+          RelType pairTy = getMipsRelPairType(type);
+          if (pairTy != R_MIPS_NONE) {
+            bool found = false;
+            for (auto pi = std::next(it); pi != end; ++pi) {
+              const Relocation &pair = *pi;
+              if (pair.type == pairTy && pair.sym == rel.sym) {
+                addend += target.getImplicitAddend(
+                    sec->content().begin() + pair.offset, pairTy);
+                found = true;
+                break;
+              }
+            }
+            if (!found)
+              Warn(ctx) << "can't find matching " << pairTy
+                        << " relocation for " << type;
+          }
+        }
+      }
 
       if (ctx.arg.emachine == EM_MIPS &&
           target.getRelExpr(type, sym, bufLoc) == RE_MIPS_GOTREL) {
